@@ -12,7 +12,9 @@ from ctypes import wintypes
 import json
 import logging
 import os
+from pathlib import Path
 import sys
+import threading
 import time
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional
@@ -28,7 +30,10 @@ try:
 except ImportError:
     serial = None
 
-# Default configurations
+from drift_link_core import DriftEvent, DriftEventBus, DriftEventType
+
+# Default constants
+CONFIG_PATH = Path(__file__).parent / "drift_ecosystem.json"
 DEFAULT_MATRIX_URL = os.environ.get("DRIFT_MATRIX_URL", "http://192.168.1.90")
 RPI_PICO_VID = 0x2E8A       # Raspberry Pi Pico (DriftPad)
 WAVESHARE_VID = 0x1A86      # CH343 USB-Serial (Drift-Watch ESP32-S3)
@@ -46,11 +51,53 @@ class DeviceStatus:
 
 
 class DriftEcosystem:
-    def __init__(self, matrix_url: str = DEFAULT_MATRIX_URL):
-        self.matrix_url = matrix_url.rstrip("/")
+    def __init__(self, config_file: Optional[Path] = None):
+        self.config = self._load_config(config_file or CONFIG_PATH)
+        devices = self.config.get("ecosystem", {}).get("devices", {})
+        matrix_cfg = devices.get("matrix", {})
+        
+        self.matrix_url = matrix_cfg.get("url", DEFAULT_MATRIX_URL).rstrip("/")
         self.session = requests.Session()
-        self.app_cycle = ["moon", "nowplaying", "ocean", "pcstats0", "weatherbrief", "timepiece"]
+        self.app_cycle = matrix_cfg.get("rotation_apps", [
+            "moon", "nowplaying", "ocean", "pcstats0", "weatherbrief", "timepiece"
+        ])
         self._cycle_index = 0
+        self.bus = DriftEventBus()
+        self._setup_event_listeners()
+
+    def _load_config(self, path: Path) -> Dict[str, Any]:
+        if path.is_file():
+            try:
+                with open(path, "r", encoding="utf-8") as f:
+                    return json.load(f)
+            except Exception as e:
+                logger.warning(f"Could not parse {path}, using defaults: {e}")
+        return {}
+
+    def _setup_event_listeners(self) -> None:
+        """Link event bus signals to physical hardware actions."""
+        self.bus.subscribe(DriftEventType.MACRO_TRIGGERED, self._on_macro_triggered)
+        self.bus.subscribe(DriftEventType.ALERT_BROADCAST, self._on_alert_broadcast)
+
+    def _on_macro_triggered(self, event: DriftEvent) -> None:
+        """Handle macro execution from DriftPad."""
+        action = event.data.get("action")
+        target = event.data.get("target")
+        logger.info(f"Macro Event: {action} -> {target}")
+
+        if action == "switch_app" and target:
+            self.switch_matrix_app(target)
+        elif action == "cycle_app":
+            self.cycle_matrix_app()
+        elif action == "toggle_power":
+            self.toggle_matrix_power()
+
+    def _on_alert_broadcast(self, event: DriftEvent) -> None:
+        """Broadcast alert to DriftMatrix and connected wearable nodes."""
+        msg = event.data.get("message", "ALERT")
+        icon = event.data.get("icon")
+        duration = event.data.get("duration_ms", 4000)
+        self.push_matrix_notification(msg, icon=icon, duration_ms=duration)
 
     def probe_matrix(self) -> DeviceStatus:
         """Probe DriftMatrix over local Wi-Fi HTTP REST."""
@@ -161,7 +208,10 @@ class DriftEcosystem:
                 json={"name": app_name, "fast": True},
                 timeout=2.0,
             )
-            return res.status_code == 200
+            success = res.status_code == 200
+            if success:
+                logger.info(f"DriftMatrix switched to {app_name}")
+            return success
         except Exception as e:
             logger.error(f"Failed to switch matrix app to {app_name}: {e}")
             return False
@@ -176,11 +226,11 @@ class DriftEcosystem:
     def toggle_matrix_power(self) -> bool:
         """Toggle display power on DriftMatrix."""
         try:
-            # Check current power
             res = self.session.get(f"{self.matrix_url}/api/v1/device", timeout=1.5)
             curr = res.json().get("matrixPower", True) if res.status_code == 200 else True
             target = not curr
             self.session.put(f"{self.matrix_url}/api/v1/system", json={"matrixPower": target}, timeout=1.5)
+            logger.info(f"DriftMatrix power set to {target}")
             return target
         except Exception as e:
             logger.error(f"Failed to toggle matrix power: {e}")
@@ -230,7 +280,7 @@ def print_dashboard(eco: DriftEcosystem) -> None:
     print("=" * 65 + "\n")
 
 
-def run_hotkey_listener(eco: DriftEcosystem) -> None:
+def run_hotkey_listener(eco: DriftEcosystem, daemon_mode: bool = False) -> None:
     """Register global Windows hotkeys to listen for DriftPad Macro keys & shortcuts."""
     user32 = ctypes.windll.user32
 
@@ -239,20 +289,29 @@ def run_hotkey_listener(eco: DriftEcosystem) -> None:
     MOD_CONTROL = 0x0002
     MOD_NOREPEAT = 0x4000
 
-    # Hotkey map: hotkey_id -> (description, action_func)
+    def trigger_macro(macro_idx: int, action: str, target: str):
+        eco.bus.publish(
+            DriftEvent(
+                event_type=DriftEventType.MACRO_TRIGGERED,
+                source="DriftPad",
+                data={"macro_index": macro_idx, "action": action, "target": target},
+            )
+        )
+
+    # Hotkey map: hotkey_id -> (description, trigger_func)
     HOTKEYS = {
-        # Ctrl + Alt + 1 / F13: DriftPad Macro 1 -> Now Playing
-        101: ("Macro 1 (Ctrl+Alt+1 / F13) -> Now Playing", lambda: eco.switch_matrix_app("nowplaying")),
-        # Ctrl + Alt + 2 / F14: DriftPad Macro 2 -> Moon Phase Tracker
-        102: ("Macro 2 (Ctrl+Alt+2 / F14) -> Moon Phase", lambda: eco.switch_matrix_app("moon")),
-        # Ctrl + Alt + 3 / F15: DriftPad Macro 3 -> PC Hardware Telemetry
-        103: ("Macro 3 (Ctrl+Alt+3 / F15) -> PC Stats", lambda: eco.switch_matrix_app("pcstats0")),
-        # Ctrl + Alt + 4 / F16: DriftPad Macro 4 -> Ocean Wave Simulation
-        104: ("Macro 4 (Ctrl+Alt+4 / F16) -> Ocean Waves", lambda: eco.switch_matrix_app("ocean")),
-        # Ctrl + Alt + Space: Cycle visual app
-        105: ("Cycle App (Ctrl+Alt+Space)", lambda: eco.cycle_matrix_app()),
-        # Ctrl + Alt + 0: Toggle display power
-        106: ("Toggle Matrix Power (Ctrl+Alt+0)", lambda: eco.toggle_matrix_power()),
+        # Macro 1: Now Playing
+        101: ("Macro 1 (Ctrl+Alt+1 / F13) -> Now Playing", lambda: trigger_macro(1, "switch_app", "nowplaying")),
+        # Macro 2: Moon Phase Tracker
+        102: ("Macro 2 (Ctrl+Alt+2 / F14) -> Moon Phase", lambda: trigger_macro(2, "switch_app", "moon")),
+        # Macro 3: PC Hardware Telemetry
+        103: ("Macro 3 (Ctrl+Alt+3 / F15) -> PC Stats", lambda: trigger_macro(3, "switch_app", "pcstats0")),
+        # Macro 4: Ocean Wave Simulation
+        104: ("Macro 4 (Ctrl+Alt+4 / F16) -> Ocean Waves", lambda: trigger_macro(4, "switch_app", "ocean")),
+        # Cycle App
+        105: ("Cycle App (Ctrl+Alt+Space)", lambda: trigger_macro(0, "cycle_app", "")),
+        # Toggle Power
+        106: ("Toggle Matrix Power (Ctrl+Alt+0)", lambda: trigger_macro(0, "toggle_power", "")),
     }
 
     # Register Ctrl+Alt combinations
@@ -263,7 +322,7 @@ def run_hotkey_listener(eco: DriftEcosystem) -> None:
     user32.RegisterHotKey(None, 105, MOD_CONTROL | MOD_ALT | MOD_NOREPEAT, 0x20)  # Space
     user32.RegisterHotKey(None, 106, MOD_CONTROL | MOD_ALT | MOD_NOREPEAT, ord("0"))
 
-    # Also register F13-F16 directly (common hardware macro pad keycodes)
+    # Also register F13-F16 directly
     user32.RegisterHotKey(None, 201, MOD_NOREPEAT, 0x7C)  # F13
     user32.RegisterHotKey(None, 202, MOD_NOREPEAT, 0x7D)  # F14
     user32.RegisterHotKey(None, 203, MOD_NOREPEAT, 0x7E)  # F15
@@ -273,18 +332,21 @@ def run_hotkey_listener(eco: DriftEcosystem) -> None:
     HOTKEYS[203] = HOTKEYS[103]
     HOTKEYS[204] = HOTKEYS[104]
 
-    print("\n" + "=" * 65)
-    print("      🎮 DRIFT-LINK ACTIVE: MACROPAD & CROSS-DEVICE LISTENER     ")
-    print("=" * 65)
-    print("Global hotkeys registered for DriftPad Macro keys & shortcuts:")
-    print("  • Macro 1 [F13 / Ctrl+Alt+1] : Switch DriftMatrix -> Now Playing (Vinyl)")
-    print("  • Macro 2 [F14 / Ctrl+Alt+2] : Switch DriftMatrix -> Moon Tracker")
-    print("  • Macro 3 [F15 / Ctrl+Alt+3] : Switch DriftMatrix -> PC Telemetry (GPU/CPU)")
-    print("  • Macro 4 [F16 / Ctrl+Alt+4] : Switch DriftMatrix -> Ocean Waves")
-    print("  • Hotkey  [Ctrl+Alt+Space]   : Cycle Next App")
-    print("  • Hotkey  [Ctrl+Alt+0]       : Toggle Matrix Screen Power")
-    print("-" * 65)
-    print("Listening for keystrokes in background... Press Ctrl+C in terminal to exit.\n")
+    eco.bus.start()
+
+    if not daemon_mode:
+        print("\n" + "=" * 65)
+        print("      🎮 DRIFT-LINK ACTIVE: MACROPAD & CROSS-DEVICE LISTENER     ")
+        print("=" * 65)
+        print("Global hotkeys registered for DriftPad Macro keys & shortcuts:")
+        print("  • Macro 1 [F13 / Ctrl+Alt+1] : Switch DriftMatrix -> Now Playing (Vinyl)")
+        print("  • Macro 2 [F14 / Ctrl+Alt+2] : Switch DriftMatrix -> Moon Tracker")
+        print("  • Macro 3 [F15 / Ctrl+Alt+3] : Switch DriftMatrix -> PC Telemetry (GPU/CPU)")
+        print("  • Macro 4 [F16 / Ctrl+Alt+4] : Switch DriftMatrix -> Ocean Waves")
+        print("  • Hotkey  [Ctrl+Alt+Space]   : Cycle Next App")
+        print("  • Hotkey  [Ctrl+Alt+0]       : Toggle Matrix Screen Power")
+        print("-" * 65)
+        print("Listening for keystrokes in background... Press Ctrl+C in terminal to exit.\n")
 
     msg = wintypes.MSG()
     try:
@@ -292,21 +354,43 @@ def run_hotkey_listener(eco: DriftEcosystem) -> None:
             if msg.message == 0x0312:  # WM_HOTKEY
                 hotkey_id = msg.wParam
                 if hotkey_id in HOTKEYS:
-                    desc, action = HOTKEYS[hotkey_id]
-                    print(f"[{time.strftime('%H:%M:%S')}] 🔥 DriftPad Trigger: {desc}")
-                    action()
+                    desc, trigger = HOTKEYS[hotkey_id]
+                    if not daemon_mode:
+                        print(f"[{time.strftime('%H:%M:%S')}] 🔥 DriftPad Trigger: {desc}")
+                    trigger()
             user32.TranslateMessage(ctypes.byref(msg))
             user32.DispatchMessageW(ctypes.byref(msg))
     except KeyboardInterrupt:
-        print("\nStopping Drift-Link listener...")
+        if not daemon_mode:
+            print("\nStopping Drift-Link listener...")
     finally:
+        eco.bus.stop()
         for hid in (101, 102, 103, 104, 105, 106, 201, 202, 203, 204):
             user32.UnregisterHotKey(None, hid)
 
 
+def run_daemon(eco: DriftEcosystem) -> None:
+    """Run full background ecosystem orchestrator with heartbeat and listener."""
+    logger.info("Starting Drift Hardware Ecosystem Background Daemon...")
+    listener_thread = threading.Thread(
+        target=run_hotkey_listener, args=(eco, True), name="HotkeyListenerThread", daemon=True
+    )
+    listener_thread.start()
+
+    try:
+        while True:
+            # Heartbeat check every 30s
+            status = eco.get_ecosystem_status()
+            online_count = sum(1 for dev in status.values() if dev.connected)
+            logger.info(f"Drift Ecosystem Heartbeat: {online_count}/3 nodes online")
+            time.sleep(30)
+    except KeyboardInterrupt:
+        logger.info("Daemon terminating gracefully.")
+
+
 def main():
     parser = argparse.ArgumentParser(description="Drift Hardware Ecosystem Coordinator")
-    parser.add_argument("command", choices=["status", "switch", "alert", "monitor", "listen"], default="status", nargs="?")
+    parser.add_argument("command", choices=["status", "switch", "alert", "monitor", "listen", "daemon"], default="status", nargs="?")
     parser.add_argument("--app", help="App to activate on DriftMatrix (e.g., moon, nowplaying, ocean, pcstats0)")
     parser.add_argument("--message", help="Message for ecosystem alert")
     args = parser.parse_args()
@@ -323,8 +407,14 @@ def main():
         print(f"Switching DriftMatrix to '{args.app}': {'SUCCESS' if ok else 'FAILED'}")
     elif args.command == "alert":
         msg = args.message or "DRIFT LINK"
-        ok = eco.push_matrix_notification(msg)
-        print(f"Broadcasting alert '{msg}': {'SUCCESS' if ok else 'FAILED'}")
+        eco.bus.publish_sync(
+            DriftEvent(
+                event_type=DriftEventType.ALERT_BROADCAST,
+                source="CLI",
+                data={"message": msg},
+            )
+        )
+        print(f"Broadcast alert '{msg}' sent across Drift Ecosystem.")
     elif args.command == "monitor":
         print("Starting Drift Ecosystem real-time monitor... Press Ctrl+C to stop.")
         while True:
@@ -332,6 +422,8 @@ def main():
             time.sleep(10)
     elif args.command == "listen":
         run_hotkey_listener(eco)
+    elif args.command == "daemon":
+        run_daemon(eco)
 
 
 if __name__ == "__main__":

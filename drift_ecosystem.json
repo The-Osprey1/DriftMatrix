@@ -1,0 +1,64 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "version": "1.0.0",
+  "ecosystem": {
+    "name": "Drift Hardware Ecosystem",
+    "devices": {
+      "matrix": {
+        "enabled": true,
+        "url": "http://192.168.1.90",
+        "poll_interval_s": 5.0,
+        "rotation_apps": [
+          "moon",
+          "nowplaying",
+          "ocean",
+          "pcstats0",
+          "weatherbrief",
+          "timepiece"
+        ]
+      },
+      "pad": {
+        "enabled": true,
+        "vid": "0x2E8A",
+        "fallback_port": "COM3",
+        "macro_mapping": {
+          "1": {
+            "name": "Now Playing",
+            "action": "switch_app",
+            "target": "nowplaying",
+            "hotkey_primary": "F13",
+            "hotkey_secondary": "Ctrl+Alt+1"
+          },
+          "2": {
+            "name": "Moon Phase",
+            "action": "switch_app",
+            "target": "moon",
+            "hotkey_primary": "F14",
+            "hotkey_secondary": "Ctrl+Alt+2"
+          },
+          "3": {
+            "name": "PC Telemetry",
+            "action": "switch_app",
+            "target": "pcstats0",
+            "hotkey_primary": "F15",
+            "hotkey_secondary": "Ctrl+Alt+3"
+          },
+          "4": {
+            "name": "Ocean Waves",
+            "action": "switch_app",
+            "target": "ocean",
+            "hotkey_primary": "F16",
+            "hotkey_secondary": "Ctrl+Alt+4"
+          }
+        }
+      },
+      "watch": {
+        "enabled": true,
+        "vid": "0x1A86",
+        "fallback_port": "COM6",
+        "udp_discovery_port": 4210,
+        "haptic_alerts": true
+      }
+    }
+  }
+}
