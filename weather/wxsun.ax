@@ -1,0 +1,90 @@
+# @name Sun event
+# @desc Explicit sunrise or sunset page, shown only within two hours of the event
+
+import wx
+
+class Sun
+  var data, ok, near, rising, event_min, mins_left
+
+  def init()
+    self.data = nil
+    self.ok = false
+    self.near = false
+    self.rising = true
+    self.event_min = 0
+    self.mins_left = 0
+  end
+
+  def clock(m)
+    var h = int(m / 60)
+    var mm = int(m - h * 60)
+    h = h % 12
+    if h == 0 h = 12 end
+    return str(h) + ":" + (mm < 10 ? "0" : "") + str(mm)
+  end
+
+  def recalc()
+    self.ok = false
+    self.near = false
+    var d = self.data
+    if d == nil return end
+    var up = d.find("up")
+    var dn = d.find("dn")
+    if up == nil || dn == nil return end
+    var now = hour() * 60 + minute()
+    if now < up
+      self.rising = true
+      self.event_min = up
+      self.mins_left = up - now
+    elif now < dn
+      self.rising = false
+      self.event_min = dn
+      self.mins_left = dn - now
+    else
+      self.rising = true
+      self.event_min = up
+      self.mins_left = 1440 - now + up
+    end
+    self.ok = true
+    self.near = self.mins_left <= 120
+  end
+
+  def loop()
+    self.data = wx.snapshot()
+    self.recalc()
+  end
+
+  def should_show()
+    return self.ok && self.near
+  end
+
+  def duration()
+    return 6000
+  end
+
+  def draw_icon()
+    if self.rising
+      # A complete, symmetric sun above the horizon.
+      wx.sun(0)
+      line(0, 7, 7, 7, rgb(255, 100, 45))
+    else
+      # The same round disc descending through the horizon.
+      wx.blit(wx.SUN_DISC, 0, 3, rgb(255, 166, 42))
+      pixel(3, 4, rgb(255, 235, 170))
+      line(0, 6, 7, 6, rgb(255, 76, 70))
+      line(1, 7, 6, 7, rgb(175, 45, 90))
+    end
+  end
+
+  def draw()
+    clear()
+    if !self.ok wx.stale() return end
+    self.draw_icon()
+    var phase = int((now_ms() / 3000) % 2)
+    var s = phase == 0 ? (self.rising ? "RISE" : "SET") : self.clock(self.event_min)
+    var tint = self.rising ? rgb(255, 190, 70) : rgb(255, 105, 105)
+    text(wx.center(s, wx.TX, wx.TW), wx.BASE, s, tint)
+  end
+end
+
+return Sun()

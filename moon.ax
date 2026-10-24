@@ -1,0 +1,132 @@
+# @name Moon
+# @desc Moon phase computed on device. No network, no per-pixel maths.
+# @version 2.3
+#
+# Ported from the 2026-08-08 build, which cost 1.9KB of source but would not
+# load on AWTRIX NG 1.1.0: it opened with `import wx`, and that module does not
+# exist on this firmware. `math`, `rgb()`, `month()` and `day()` all do -- that
+# was checked with a probe script rather than inferred from the fact that the
+# other working scripts happen not to call them.
+#
+# The version this replaces was a far more elaborate scene at 8.7KB of source
+# and 19,978 bytes of Berry VM heap -- a quarter of the 96KB budget for one
+# decorative app, on a panel that was panicking daily from heap exhaustion.
+# This draws the same disc, terminator, phase name and illumination percentage
+# for a fraction of that.
+
+import math
+
+class Moon
+  var disc, term, wax, label, illum, tick
+
+  def init()
+    self.disc = [0x1C, 0x3E, 0x7F, 0x7F, 0x7F, 0x3E, 0x1C]
+    self.tick = 0
+    self.term = 3.0
+    self.wax = false
+    self.label = "NEW"
+    self.illum = 0
+    self.recalc()
+  end
+
+  def jdn(y, m, d)
+    var a = int((14 - m) / 12)
+    var yy = y + 4800 - a
+    var mm = m + 12 * a - 3
+    return d + int((153 * mm + 2) / 5) + 365 * yy + int(yy / 4) - int(yy / 100) + int(yy / 400) - 32045
+  end
+
+  def recalc()
+    # Subtract the epoch in integers, not floats. Berry on the ESP32 is single
+    # precision, and float32 resolution at 2.46 million is about 0.25 -- a
+    # quarter day, which is 2.2 percentage points of illumination here. Taking
+    # `real()` only after the difference keeps the whole calculation exact.
+    var raw = (real(self.jdn(year(), month(), day()) - 2451550) - 0.1) / 29.530588853
+    var p = raw - real(int(raw))
+    if p < 0 p += 1.0 end
+    self.wax = p < 0.5
+    var c = math.cos(2.0 * math.pi * p)
+    self.term = c * 3.0
+    self.illum = int(((1.0 - c) / 2.0) * 100.0 + 0.5)
+    if p < 0.03 || p > 0.97
+      self.label = "NEW"
+    elif p < 0.47
+      self.label = "WAX"
+    elif p < 0.53
+      self.label = "FULL"
+    else
+      self.label = "WANE"
+    end
+  end
+
+  def loop()
+    if self.tick <= 0
+      self.tick = 600
+      self.recalc()
+    end
+    self.tick -= 1
+  end
+
+  def duration()
+    return 6000
+  end
+
+  def draw()
+    clear()
+    # Four stars, each breathing on its own offset so the sky is never static.
+    # All on row 0: calm glance keeps rows 1-5 for the text.
+    var tw = int(now_ms() / 800)
+    var a = 60 + (tw % 3) * 32
+    var b = 55 + ((tw + 2) % 3) * 30
+    pixel(12, 0, rgb(a, a, int(a * 1.25)))
+    pixel(19, 0, rgb(b, b, int(b * 1.25)))
+    pixel(26, 0, rgb(b, b, int(b * 1.2)))
+    pixel(30, 0, rgb(a, a, int(a * 1.22)))
+
+    # Calm glance (2026-09-26): illumination as the row-7 meter -- ICE on the
+    # shared TRACK, never empty so a new moon still reads as a meter.
+    var fill = (self.illum * 23 + 50) / 100
+    if fill < 1 fill = 1 end
+    var m = 0
+    while m < 23
+      pixel(9 + m, 7, m < fill ? 0xC4EFFF : 0x202836)
+      m += 1
+    end
+
+    var y = 0
+    while y < 7
+      var bits = self.disc[y]
+      var x = 1
+      while x <= 7
+        if ((bits >> (7 - x)) & 1) == 1
+          var nx = x - 4
+          var lit = self.wax ? (nx > self.term) : (nx < -self.term)
+          var py = y + 1
+          if lit
+            # Three craters, and a little falloff at the poles.
+            var d = 0
+            if (x == 3 && py == 3) || (x == 5 && py == 5) || (x == 4 && py == 6) d = 58 end
+            if y == 0 || y == 6 d = d + 26 end
+            pixel(x, py, rgb(230 - d, 228 - d, 208 - d))
+          else
+            pixel(x, py, rgb(30, 34, 58))
+          end
+        end
+        x += 1
+      end
+      y += 1
+    end
+
+    # Phase name, then how much of the disc is actually lit. Centred in the
+    # lane to the right of the disc rather than across the whole panel, or it
+    # would sit on top of the moon.
+    var s = int(now_ms() / 3000) % 2 == 0 ? self.label : str(self.illum) + "%"
+    var w = text_ink_width(s)
+    var tx = 9 + int((23 - w) / 2)
+    if tx < 9 tx = 9 end
+    # White like every other page's value; y=6 puts the glyphs on rows 1-5.
+    text(tx, 6, s, 0xFFF7E8)
+  end
+end
+
+return Moon()

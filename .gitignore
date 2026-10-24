@@ -1,0 +1,59 @@
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
+# Sender logs — runtime output, not source
+*.log
+
+# Minified copies produced for upload; regenerate with minify_ax.py
+build/
+*.min.ax
+
+# Rendered preview output
+figures/
+
+# Local panel snapshots and recovery captures. These can contain device, Wi-Fi,
+# LAN, and installed-script state; keep them on this PC, never in source control.
+backups/*
+weather/backups/
+
+# One exception. ocean.ax.b64 is the ONLY intact copy of the Ocean script: the
+# ocean.ax beside it is a truncated transcript artifact containing the literal
+# text "940 tokens truncated", which the panel rejects with
+# "syntax_error: stray '\226'". Ocean is 9,605 bytes, over the ~8KB source
+# readback ceiling, so it cannot be recovered from the panel either. It is
+# Berry source with no device, network or account state in it, so tracking this
+# one file costs nothing the rule above is protecting.
+!backups/2026-08-10-nightkeeper-baseline/
+backups/2026-08-10-nightkeeper-baseline/*
+!backups/2026-08-10-nightkeeper-baseline/ocean.ax.b64
+
+# Runtime/private inputs and generated release evidence
+runtime/
+artifacts/
+.awtrix-runtime/
+*.ics
+*.local.json
+utility_hub.json
+focus_state.json
+desk_reminder.json
+hub_status.json
+desk_preferences.json
+focus_commands/
+nextup-calendar-last-good.json
+.env
+.env.*
+!.env.example
+
+# Local Codex/Claude worktree state is machine-specific.
+.claude/worktrees/
+
+# Exported Task Scheduler definition is tied to this Windows account/SID.
+awtrix-utility-hub.xml
+
+# Ephemeral agent work directories and dispatch files
+.agents/
+ORIGINAL_REQUEST.md
+tmp/
+

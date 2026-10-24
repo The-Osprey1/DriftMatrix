@@ -1,0 +1,149 @@
+# @name Countdown
+# @desc Days to a named date with a one-way, settling hourglass
+# @config target text "Target date YYYY-MM-DD" default="2026-12-01"
+# @config label text "Short label (max 5 chars)" default="PHD"
+
+import string
+import wx
+
+class Soon
+var tj, days, tag, tick, shown, months
+var caps, glass, hi, frames, stream
+
+def init()
+self.tick = 0
+self.days = nil
+self.shown = now_ms()
+self.months = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31]
+self.caps = [0xFF, 0, 0, 0, 0, 0, 0, 0xFF]
+self.glass = [0, 0x42, 0x24, 0x18, 0x18, 0x24, 0x42, 0]
+self.hi = [0, 0x40, 0x20, 0x10, 0x10, 0x20, 0x40, 0]
+self.frames = [
+[0, 0x3C, 0x18, 0, 0, 0, 0, 0],
+[0, 0x18, 0x18, 0x18, 0x18, 0x18, 0x18, 0],
+[0, 0, 0x18, 0x18, 0x18, 0x18, 0x3C, 0],
+[0, 0, 0, 0x18, 0x18, 0x18, 0x3C, 0],
+[0, 0, 0, 0, 0, 0x18, 0x3C, 0]
+]
+self.stream = [0, 0, 0, 0x18, 0x18, 0x18, 0, 0]
+
+var tag = store.get("label")
+if tag == nil || size(str(tag)) == 0 tag = "PHD" end
+self.tag = string.toupper(string.format("%.5s", str(tag)))
+
+var target = store.get("target")
+if target == nil target = "2026-12-01" end
+self.tj = self.parse(target)
+self.recalc()
+end
+
+def jdn(y, m, d)
+var a = int((14 - m) / 12)
+var yy = y + 4800 - a
+var mm = m + 12 * a - 3
+return d + int((153 * mm + 2) / 5) + 365 * yy + int(yy / 4) - int(yy / 100) + int(yy / 400) - 32045
+end
+
+def parse(s)
+if s == nil return nil end
+var p = string.split(str(s), "-")
+if size(p) != 3 return nil end
+if size(p[0]) != 4 || size(p[1]) != 2 || size(p[2]) != 2 return nil end
+if string.tr(p[0] + p[1] + p[2], "0123456789", "") != "" return nil end
+var y = int(p[0])
+var m = int(p[1])
+var d = int(p[2])
+if y < 1970 || y > 9999 || m < 1 || m > 12 || d < 1 return nil end
+var last = self.months[m - 1]
+if m == 2 && (y % 400 == 0 || (y % 4 == 0 && y % 100 != 0)) last = 29 end
+if d > last return nil end
+return self.jdn(y, m, d)
+end
+
+def recalc()
+if self.tj == nil || year() < 2020
+self.days = nil
+return
+end
+self.days = self.tj - self.jdn(year(), month(), day())
+end
+
+def loop()
+if self.tick <= 0
+self.tick = 60
+self.recalc()
+end
+self.tick -= 1
+end
+
+def on_show()
+self.shown = now_ms()
+end
+
+def duration()
+return 6000
+end
+
+def color()
+if self.days == nil return [110, 125, 145] end
+if self.days < 0 return [116, 185, 255] end
+if self.days == 0 return [255, 214, 90] end
+if self.days <= 7 return [255, 98, 90] end
+if self.days <= 30 return [255, 184, 77] end
+return [73, 221, 166]
+end
+
+def glow(raw)
+return rgb(
+int(raw[0] + (255 - raw[0]) * 0.30),
+int(raw[1] + (255 - raw[1]) * 0.30),
+int(raw[2] + (255 - raw[2]) * 0.30))
+end
+
+def value()
+if self.days == nil return "DATE" end
+if self.days < 0 return "DONE" end
+if self.days == 0 return "TODAY" end
+if self.days > 999 return "999+" end
+return str(self.days) + "d"
+end
+
+def draw()
+clear()
+var raw = self.color()
+var sand = rgb(raw[0], raw[1], raw[2])
+wx.blit(self.glass, 0, 0, rgb(120, 152, 187))
+wx.blit(self.hi, 0, 0, rgb(196, 222, 246))
+wx.blit(self.caps, 0, 0, rgb(227, 238, 250))
+
+var elapsed = now_ms() - self.shown
+if elapsed < 0 elapsed = 0 end
+if self.days != nil
+var frame = self.days <= 0 ? 4 : int(elapsed / 350)
+if frame > 4 frame = 4 end
+wx.blit(self.frames[frame], 0, 0, sand)
+if self.days > 0 && frame >= 1 && frame <= 3
+wx.blit(self.stream, 0, 0, self.glow(raw))
+end
+end
+
+var s
+var ink
+if self.days == nil
+s = "DATE"
+ink = rgb(255, 98, 90)
+elif self.days <= 0
+s = self.value()
+ink = sand
+elif elapsed < 1400
+s = self.tag
+ink = rgb(227, 238, 250)
+else
+s = self.value()
+ink = sand
+end
+text(wx.center(s, wx.TX, wx.TW), wx.BASE, s, ink)
+end
+end
+
+return Soon()

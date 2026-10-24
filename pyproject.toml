@@ -1,0 +1,36 @@
+[project]
+name = "awtrix"
+version = "1.0.0"
+description = "PC-side senders and tools for an AWTRIX NG 32x8 LED panel"
+requires-python = ">=3.13"
+dependencies = [
+    "psutil>=7.2,<8",
+    "requests>=2.32,<3",
+    "Pillow>=11.1,<12",
+    "icalendar>=7.3,<8",
+    "recurring-ical-events>=3.8,<4",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.3",
+    "pytest-cov>=6.0",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["."]
+pythonpath = ["."]
+markers = [
+    "slow: tests that take more than 1 second",
+    "integration: tests requiring network access or a live panel",
+    "visual: tests that generate preview images",
+]
+addopts = "--strict-markers --tb=short"
+
+[tool.coverage.run]
+source = ["."]
+omit = ["test_*", "*_preview.py", "*_preview_*.py", "conftest.py"]
+
+[tool.coverage.report]
+show_missing = true
+skip_empty = true

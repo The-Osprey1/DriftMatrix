@@ -1,0 +1,225 @@
+# @name     Weather feed
+# @desc     Coherent Open-Meteo current, daily and six-hour hazard snapshot
+# @headless true
+
+import json
+import string
+import wx
+
+class Feed
+  var ticks, in_flight, fails
+  var hs, hk, hv, he, hx
+
+  def init()
+    self.ticks = 0
+    self.in_flight = false
+    self.fails = 0
+    self.reset_hazard()
+  end
+
+  def rounded(v)
+    if v == nil return nil end
+    var n = real(v)
+    return n >= 0 ? int(n + 0.5) : int(n - 0.5)
+  end
+
+  def first(c, field)
+    if c == nil return nil end
+    var l = c.find(field)
+    if l == nil || !isinstance(l, list) || size(l) == 0 return nil end
+    return l[0]
+  end
+
+  def at(l, i)
+    if l == nil || !isinstance(l, list) return nil end
+    if i < 0 || i >= size(l) return nil end
+    return l[i]
+  end
+
+  # "2026-08-08T06:07" -> 367 minutes since local midnight.
+  def mins(c, field)
+    var v = self.first(c, field)
+    if v == nil return nil end
+    var p = string.split(str(v), "T")
+    if size(p) < 2 return nil end
+    var hm = string.split(p[1], ":")
+    if size(hm) < 2 return nil end
+    return int(hm[0]) * 60 + int(hm[1])
+  end
+
+  def reset_hazard()
+    self.hs = 0
+    self.hk = ""
+    self.hv = 0
+    self.he = 99
+    self.hx = 0
+  end
+
+  def consider(score, kind, value, eta, aux)
+    if score > self.hs || (score == self.hs && eta < self.he)
+      self.hs = score
+      self.hk = kind
+      self.hv = value
+      self.he = eta
+      self.hx = aux
+    end
+  end
+
+  def fail(reason)
+    self.fails += 1
+    self.ticks = 60
+    if self.fails == 1 || self.fails == 5 || self.fails % 10 == 0
+      log("wxfeed: " + reason)
+    end
+  end
+
+  def on_body(body, status)
+    self.in_flight = false
+    if status != 200 || body == nil
+      self.fail("HTTP " + str(status))
+      return
+    end
+
+    var root = json.load(body)
+    if !isinstance(root, map) self.fail("bad JSON") return end
+    var cur = root.find("current")
+    var day = root.find("daily")
+    var hr = root.find("hourly")
+    if !isinstance(cur, map) || !isinstance(day, map) || !isinstance(hr, map)
+      self.fail("missing sections")
+      return
+    end
+
+    var t = self.rounded(cur.find("temperature_2m"))
+    var code = self.rounded(cur.find("weather_code"))
+    var isday = self.rounded(cur.find("is_day"))
+    var hi = self.rounded(self.first(day, "temperature_2m_max"))
+    var lo = self.rounded(self.first(day, "temperature_2m_min"))
+    var daycode = self.rounded(self.first(day, "weather_code"))
+    var uvmax = self.rounded(self.first(day, "uv_index_max"))
+    var up = self.mins(day, "sunrise")
+    var dn = self.mins(day, "sunset")
+    if t == nil || code == nil || isday == nil || hi == nil || lo == nil || daycode == nil || up == nil || dn == nil
+      self.fail("missing required fields")
+      return
+    end
+
+    self.reset_hazard()
+    var feels_now = self.rounded(cur.find("apparent_temperature"))
+    var wind = self.rounded(cur.find("wind_speed_10m"))
+    var gust = self.rounded(cur.find("wind_gusts_10m"))
+    var dir = self.rounded(cur.find("wind_direction_10m"))
+    if dir == nil dir = 0 end
+    if feels_now != nil && feels_now >= 100
+      self.consider(90, "heat", feels_now, 0, 0)
+    elif feels_now != nil && feels_now <= 32
+      self.consider(90, "cold", feels_now, 0, 0)
+    elif feels_now != nil && feels_now >= 95
+      self.consider(70, "heat", feels_now, 0, 0)
+    end
+    # Daily extremes remain worth surfacing before they enter the six-hour
+    # window. Hourly candidates of equal severity win via the earlier ETA.
+    if hi >= 100
+      self.consider(90, "heat", hi, 9, 0)
+    elif lo <= 32
+      self.consider(90, "cold", lo, 9, 0)
+    elif hi >= 95
+      self.consider(70, "heat", hi, 9, 0)
+    end
+    if uvmax != nil && uvmax >= 8
+      self.consider(60, "uv", uvmax, 9, 0)
+    elif uvmax != nil && uvmax >= 6
+      self.consider(45, "uv", uvmax, 9, 0)
+    end
+    if gust != nil && gust >= 40
+      self.consider(85, "gust", gust, 0, dir)
+    elif gust != nil && gust >= 25
+      self.consider(65, "gust", gust, 0, dir)
+    end
+    if wind != nil && wind >= 15 self.consider(30, "wind", wind, 0, dir) end
+
+    var pops = hr.find("precipitation_probability")
+    var codes = hr.find("weather_code")
+    var feels = hr.find("apparent_temperature")
+    var gusts = hr.find("wind_gusts_10m")
+    var uvs = hr.find("uv_index")
+    var i = 1
+    while i <= 6
+      # Hourly POP describes the preceding hour. Index 1 is the window that
+      # is already underway; later indexes are converted to a rough start ETA.
+      var mins_ahead = (i - 1) * 60 - minute()
+      if mins_ahead < 0 mins_ahead = 0 end
+      var eta = mins_ahead == 0 ? 0 : int((mins_ahead + 59) / 60)
+      var hc = self.rounded(self.at(codes, i))
+      var feel = self.rounded(self.at(feels, i))
+      var hg = self.rounded(self.at(gusts, i))
+      var uv = self.rounded(self.at(uvs, i))
+      var pop = self.rounded(self.at(pops, i))
+
+      if hc != nil && hc >= 95 && hc <= 99
+        self.consider(100, "storm", hc, eta, 0)
+      end
+      if feel != nil && feel >= 100
+        self.consider(90, "heat", feel, eta, 0)
+      elif feel != nil && feel <= 32
+        self.consider(90, "cold", feel, eta, 0)
+      elif feel != nil && feel >= 95
+        self.consider(70, "heat", feel, eta, 0)
+      end
+      if hg != nil && hg >= 40
+        self.consider(85, "gust", hg, eta, dir)
+      elif hg != nil && hg >= 25
+        self.consider(65, "gust", hg, eta, dir)
+      end
+
+      if hc != nil && ((hc >= 56 && hc <= 57) || (hc >= 66 && hc <= 67))
+        self.consider(85, "ice", pop == nil ? 0 : pop, eta, 0)
+      elif hc != nil && ((hc >= 71 && hc <= 77) || hc == 85 || hc == 86)
+        self.consider(75, "snow", pop == nil ? 0 : pop, eta, 0)
+      elif pop != nil && pop >= 70
+        self.consider(80, "rain", pop, eta, 0)
+      elif pop != nil && pop >= 30
+        self.consider(55, "rain", pop, eta, 0)
+      end
+
+      if uv != nil && uv >= 8
+        self.consider(60, "uv", uv, eta, 0)
+      elif uv != nil && uv >= 6
+        self.consider(45, "uv", uv, eta, 0)
+      end
+      i += 1
+    end
+
+    if self.hk == "" self.he = 0 end
+    var snap = {
+      "t": t, "c": code, "d": isday,
+      "hi": hi, "lo": lo, "dc": daycode,
+      "up": up, "dn": dn,
+      "hk": self.hk, "hv": self.hv, "he": self.he, "hx": self.hx
+    }
+    if !shared.set("data", json.dump(snap))
+      self.fail("shared snapshot refused")
+      return
+    end
+    self.fails = 0
+    self.ticks = 600
+  end
+
+  def loop()
+    if !self.in_flight && self.ticks <= 0
+      self.in_flight = true
+      self.ticks = 60
+      http.get(
+        "https://api.open-meteo.com/v1/forecast"
+        "?latitude=" + wx.LAT + "&longitude=" + wx.LON +
+        "&current=temperature_2m,weather_code,is_day,apparent_temperature,wind_speed_10m,wind_direction_10m,wind_gusts_10m"
+        "&hourly=precipitation_probability,weather_code,apparent_temperature,wind_gusts_10m,uv_index"
+        "&daily=temperature_2m_max,temperature_2m_min,weather_code,sunrise,sunset,uv_index_max"
+        "&forecast_hours=7&forecast_days=1&temperature_unit=fahrenheit&wind_speed_unit=mph&timezone=auto",
+        / b, st -> self.on_body(b, st))
+    end
+    if self.ticks > 0 self.ticks -= 1 end
+  end
+end
+
+return Feed()

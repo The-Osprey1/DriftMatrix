@@ -1,0 +1,121 @@
+# @name Weather attention
+# @desc The most useful six-hour weather hazard; hidden when conditions are quiet
+
+import wx
+
+class Sky
+  var data
+
+  def init()
+    self.data = nil
+  end
+
+  def loop()
+    self.data = wx.snapshot()
+  end
+
+  def current_kind()
+    if self.data == nil return "" end
+    var c = self.data.find("c")
+    if c == nil return "" end
+    c = int(c)
+    if c >= 95 && c <= 99 return "storm" end
+    if (c >= 56 && c <= 57) || (c >= 66 && c <= 67) return "ice" end
+    if (c >= 71 && c <= 77) || c == 85 || c == 86 return "snow" end
+    if c == 63 || c == 65 || c == 81 || c == 82 return "rain" end
+    return ""
+  end
+
+  def should_show()
+    if self.data == nil return false end
+    if self.current_kind() != "" return true end
+    var k = self.data.find("hk")
+    return k != nil && k != ""
+  end
+
+  def word(s, tint)
+    text(wx.center(s, wx.TX, wx.TW), wx.BASE, s, tint)
+  end
+
+  def degree(v, tint)
+    var s = str(int(v))
+    var total = text_ink_width(s) + 3
+    var x = wx.TX + int((wx.TW - total) / 2)
+    if x < wx.TX x = wx.TX end
+    var adv = text(x, wx.BASE, s, tint)
+    var dx = x + adv
+    pixel(dx, 1, tint) pixel(dx + 1, 1, tint)
+    pixel(dx, 2, tint) pixel(dx + 1, 2, tint)
+  end
+
+  def timing(eta)
+    var when = eta == 0 ? "NOW" : (eta >= 9 ? "TODAY" : "IN" + str(int(eta)) + "H")
+    self.word(when, rgb(185, 225, 250))
+  end
+
+  def draw()
+    clear()
+    var d = self.data
+    if d == nil wx.stale() return end
+    var k = self.current_kind()
+    var v = 0
+    var eta = 0
+    if k == ""
+      k = d.find("hk")
+      v = d.find("hv")
+      eta = d.find("he")
+    elif k == "storm"
+      v = d.find("c")
+    end
+    if k == nil || k == "" || v == nil || eta == nil return end
+    var phase = int((now_ms() / 2000) % 3)
+
+    if k == "storm"
+      wx.storm(0)
+      if phase == 1 self.timing(eta) else self.word("STORM", rgb(255, 215, 45)) end
+    elif k == "heat"
+      wx.sun(0)
+      if phase == 0 self.word("HEAT", rgb(255, 80, 45)) elif phase == 1 self.degree(v, rgb(255, 80, 45)) else self.timing(eta) end
+    elif k == "cold"
+      wx.snow(0)
+      if phase == 0 self.word("COLD", rgb(105, 205, 255)) elif phase == 1 self.degree(v, rgb(105, 205, 255)) else self.timing(eta) end
+    elif k == "gust" || k == "wind"
+      wx.wind(0, v)
+      var title = k == "gust" ? "GUST" : "WIND"
+      if phase == 0
+        self.word(title, rgb(190, 235, 255))
+      elif phase == 1
+        var speed = v >= 100 ? str(int(v)) : str(int(v)) + "MPH"
+        self.word(speed, rgb(125, 205, 245))
+      else
+        self.timing(eta)
+      end
+    elif k == "uv"
+      wx.sun(0)
+      if phase == 1 self.timing(eta) else self.word("UV" + str(int(v)), rgb(255, 165, 45)) end
+    elif k == "rain" || k == "snow" || k == "ice"
+      if k == "rain"
+        wx.rain(0)
+      elif k == "snow"
+        wx.snow(0)
+      else
+        wx.snow(0)
+      end
+      if phase != 1
+        if k == "ice"
+          self.word("ICE", rgb(165, 225, 255))
+        elif k == "snow" && v <= 0
+          self.word("SNOW", rgb(190, 230, 255))
+        elif k == "rain" && v <= 0
+          self.word("RAIN", rgb(100, 195, 255))
+        else
+          self.word(str(int(v)) + "%", rgb(80, 180, 255))
+        end
+      else
+        self.timing(eta)
+      end
+    end
+  end
+end
+
+return Sky()

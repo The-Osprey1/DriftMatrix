@@ -1,0 +1,44 @@
+# @name Weather now
+# @desc Current condition and temperature, with a true day/night icon
+
+import wx
+
+class Now
+  var data
+
+  def init()
+    self.data = nil
+  end
+
+  def loop()
+    self.data = wx.snapshot()
+  end
+
+  def draw()
+    clear()
+    var d = self.data
+    if d == nil wx.stale() return end
+    var t = d.find("t")
+    var code = d.find("c")
+    var isday = d.find("d")
+    if t == nil || code == nil || isday == nil wx.stale() return end
+
+    wx.current_icon(code, isday, 0)
+    var n = str(int(t))
+    var total = text_ink_width(n) + 3
+    var x = wx.TX + int((wx.TW - total) / 2)
+    if x < wx.TX x = wx.TX end
+    var tint = wx.temp_tint(t)
+    var adv = text(x, wx.BASE, n, tint)
+    var dx = x + adv
+
+    # Draw the degree mark in the same temperature colour. It is fixed,
+    # connected, and cannot be damaged by text encoding in transit.
+    pixel(dx, 1, tint)
+    pixel(dx + 1, 1, tint)
+    pixel(dx, 2, tint)
+    pixel(dx + 1, 2, tint)
+  end
+end
+
+return Now()

@@ -1,0 +1,541 @@
+# @name Moon
+# @desc Moon phase over a drifting nebula, with a true terminator and eclipses
+# @author Devyn + Codex + Claude
+# @version 2.1
+
+# STAGED, NOT INSTALLED. weather/moon-panel.ax (v2.0) is what the panel runs
+# until this replaces it. Same pixels as v2.0; draw() does a fraction of the
+# work. Everything that only changes in loop() is cached there: the nebula as
+# packed runs, the disc as <=3 segments per row, the dark-limb colour, the rim
+# colour and the label width. weather/moon_panel_sim.py mirrors this file line
+# by line and weather/test_moon_panel_sim.py checks it against v2.0.
+
+var HORIZON_ALT = 0.30
+var HORIZON_WARM = 70
+var HORIZON_TINT = 0xE8A24C
+
+var MOON_START_MINUTE = 1080
+var MOON_END_MINUTE = 1290
+var MOON_REMINDER_MS = 900000
+var ALWAYS_SHOW = true
+
+class Moon
+  var illum, wax, phf, pnm, pcts, valid
+  var dim, lastd, lpc, lh, ecl
+  var hw, span0, sc, mc, st, neb, pal, ct
+  var litc, midc, shown, last_shown
+  var nr, nn, dr, dk, hc, pw, pws
+
+  def init()
+    self.illum = 50
+    self.wax = true
+    self.phf = 0.5
+    self.pnm = "MOON"
+    self.pcts = "50%"
+    self.valid = false
+    self.dim = 100
+    self.lastd = -999
+    self.lpc = -999000
+    # -99, not -1: hour() returns -1 before NTP sync.
+    self.lh = -99
+    self.ecl = 0
+    self.litc = 0xEEE3CE
+    self.midc = 0x717988
+    self.shown = now_ms()
+    self.last_shown = -1
+    self.ct = [0x1A2038, 0x203A48]
+
+    self.hw = [1.94, 3.12, 3.71, 3.97, 3.97, 3.71, 3.12, 1.94]
+    self.span0 = [2,4, 1,6, 0,8, 0,8, 0,8, 0,8, 1,6, 2,4]
+    self.mc = [0xFFFFFF, 0xFFD27F, 0xFF6347, 0x8B0000, 0x2F0000]
+    self.sc = [0x9BB0FF, 0xBBCCFF, 0xF8F9FF, 0xFFFFED, 0xFFF4EA, 0xFFB56C, 0xFF6D3B]
+    # 16 far then 8 near stars: x, y, period/100, colour. Every period is a
+    # multiple of 100 ms, so a byte holds it exactly.
+    self.st = bytes("030034010703580019063A031C01520123033E042B06360133014C023B044200010545051802320127004803370550011F0738022F044E003E0740062102560105063D001B045C0125052F0535034A01080155021E003B012D0745043D023506")
+    # v2.0's 1,011-char literal, run-length coded: FF nn = nn zero bytes.
+    # Decodes to the same 505 bytes (an odd-length hex string loses its last
+    # nibble), so row 7 keeps its shifted, saturated streak.
+    var z = bytes("FF03010201FF1E010407090A090705030201FF110103060708080604FF1C0204050505040301FF1403060A0C0D0B0803FF1402030301FF070101FF1704090C0E0E0A05FF14020508090805FF1F04080B0C0A05FF1203070A0D0E0C0802FF200205060502FF120306090C0E0F0E0A04FF340305080A0C0C0C0904FF0F0306080807060403FF1C204050606060604020FF1040A0C0D0C090705030FF07")
+    # Zero runs are written out rather than skipped, so nothing here depends
+    # on whether resize() clears the bytes it adds. v2.0 never relied on that
+    # either: its build_map() writes all 256 map cells before any read.
+    var nb = bytes(), p = 0, k = 0
+    nb.resize(505)
+    while k < z.size()
+      var v = z[k]
+      if v == 0xFF
+        var e = p + z[k + 1]
+        while p < e
+          nb[p] = 0
+          p += 1
+        end
+        k += 2
+      else
+        nb[p] = v
+        p += 1
+        k += 1
+      end
+    end
+    self.neb = nb
+    self.pal = [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0]
+    # Packed nebula runs: x0 | x1<<5 | y<<10 | palette index<<13. At most 60
+    # runs over all 64 drift positions, so 64 slots never truncate. Filled
+    # with push(), the idiom ocean already runs on this firmware.
+    self.nr = []
+    k = 0
+    while k < 64
+      self.nr.push(0)
+      k += 1
+    end
+    self.nn = 0
+    self.dr = [0,0,0,0,0,0,0,0]
+    self.dk = 0x3A3E4B
+    self.hc = 0
+    self.pw = 0
+    self.pws = nil
+
+    self.update_hour_tint()
+    # Built once unconditionally, so a draw() before NTP shows v2.0's default
+    # 50% disc; compute_phase rebuilds it whenever the phase is valid.
+    self.build_disc()
+    self.compute_phase()
+    self.compute_position()
+    self.build_pal()
+    self.build_map()
+  end
+
+  def on_show()
+    self.shown = now_ms()
+    self.last_shown = self.shown
+  end
+
+  def sn(x)
+    x = x - int(x)
+    if x < 0.0 x = x + 1.0 end
+    var n = false
+    if x > 0.5
+      x = x - 0.5
+      n = true
+    end
+    var f = x * 2.0
+    var u = f * (1.0 - f)
+    var v = 16.0 * u / (5.0 - 4.0 * u)
+    return n ? -v : v
+  end
+
+  def cs(x)
+    return self.sn(x + 0.25)
+  end
+
+  def mix(a, b, n)
+    if n < 0 n = 0 end
+    if n > 100 n = 100 end
+    var ar = (a >> 16) & 0xFF
+    var ag = (a >> 8) & 0xFF
+    var ab = a & 0xFF
+    var br = (b >> 16) & 0xFF
+    var bg = (b >> 8) & 0xFF
+    var bb = b & 0xFF
+    return (int(ar + (br - ar) * n / 100) << 16) | (int(ag + (bg - ag) * n / 100) << 8) | int(ab + (bb - ab) * n / 100)
+  end
+
+  def fade_pixel(x, y, c)
+    if x < 0 || x >= 32 || y < 0 || y >= 8 return end
+    if x >= 3 && x <= 28
+      pixel(x, y, c)
+      return
+    end
+    var f = (x < 3) ? real(x) / 3.0 : real(31 - x) / 3.0
+    if f <= 0.0 return end
+    pixel(x, y, (int(((c >> 16) & 0xFF) * f) << 16) | (int(((c >> 8) & 0xFF) * f) << 8) | int((c & 0xFF) * f))
+  end
+
+  def days()
+    if year() < 2020 return nil end
+    return epoch_ms() / 86400000.0
+  end
+
+  def name_phase()
+    if self.ecl > 0
+      self.pnm = "ECL"
+    elif self.illum <= 1
+      self.pnm = "NEW"
+    elif self.illum < 49
+      self.pnm = "CRES"
+    elif self.illum <= 51
+      self.pnm = "QRTR"
+    elif self.illum < 99
+      self.pnm = "GIBB"
+    else
+      self.pnm = "FULL"
+    end
+    self.pcts = self.illum == 100 ? "100" : str(self.illum) + "%"
+  end
+
+  def compute_phase()
+    var t = self.days()
+    if t == nil
+      self.valid = false
+      return
+    end
+    var T = (t - 10957.5) / 36525.0
+    var D = 297.8501921 + 445267.1114034 * T
+    var M = 357.5291092 + 35999.0502909 * T
+    var Mp = 134.9633964 + 477198.8675055 * T
+    var F = 93.2720950 + 483202.0175233 * T
+
+    var i = 180.0 - D
+    i -= 6.289 * self.sn(Mp / 360.0)
+    i += 2.100 * self.sn(M / 360.0)
+    i -= 1.274 * self.sn((2.0 * D - Mp) / 360.0)
+    i -= 0.658 * self.sn(D / 180.0)
+    i -= 0.214 * self.sn(Mp / 180.0)
+    i -= 0.110 * self.sn(D / 360.0)
+
+    var k = (1.0 + self.cs(i / 360.0)) / 2.0
+    if k < 0.0 k = 0.0 end
+    if k > 1.0 k = 1.0 end
+    self.illum = int(k * 100.0 + 0.5)
+
+    var dd = D / 360.0
+    dd = dd - int(dd)
+    if dd < 0.0 dd = dd + 1.0 end
+    self.wax = dd < 0.5
+    self.phf = dd
+
+    self.ecl = 0
+    if self.illum >= 99
+      var sf = self.sn(F / 360.0)
+      if sf < 0.0 sf = -sf end
+      if sf < 0.36
+        self.ecl = int((0.36 - sf) * 278.0)
+        if self.ecl > 100 self.ecl = 100 end
+      end
+    end
+
+    self.valid = true
+    self.name_phase()
+    self.build_disc()
+  end
+
+  def compute_position()
+    var tr = 12.0 + self.phf * 24.0
+    while tr >= 24.0 tr -= 24.0 end
+    var h = (real(hour()) + real(minute()) / 60.0) - tr
+    while h > 12.0 h -= 24.0 end
+    while h < -12.0 h += 24.0 end
+
+    var alt = self.cs(h / 24.0)
+    var warm = 0
+    if alt >= 0.0 && alt < HORIZON_ALT
+      warm = int((HORIZON_ALT - alt) * HORIZON_WARM / HORIZON_ALT)
+    end
+    self.litc = self.mix(0xEEE3CE, HORIZON_TINT, warm)
+    self.midc = self.mix(0x717988, 0x8A6740, warm)
+
+    if self.ecl > 0
+      self.litc = self.mix(self.litc, 0x8B2500, self.ecl)
+      self.midc = self.mix(self.midc, 0x3D0C00, self.ecl)
+    end
+    self.hc = self.mix(0, self.litc, 8)
+  end
+
+  # Disc geometry depends only on illum and wax, so it is rebuilt once a
+  # minute. Per row, up to three segments (dark, terminator, lit), each
+  # 0x100 | class<<6 | x1<<3 | x0 in 9 bits, packed low to high. The tests
+  # are the v2.0 per-pixel tests, unchanged.
+  def build_disc()
+    var dc = 0x3A3E4B
+    if self.illum < 20 dc = self.mix(0x3A3E4B, 0x51586B, (20 - self.illum) * 5) end
+    if self.ecl > 0 dc = self.mix(dc, 0x2A0A06, self.ecl) end
+    if self.illum < 40 dc = self.mix(dc, 0x1C2838, (40 - self.illum) * 2) end
+    self.dk = dc
+    var tcos = 1.0 - 2.0 * (real(self.illum) / 100.0)
+    var H = self.hw, S = self.span0, W = self.wax, D = self.dr, r = 0
+    while r < 8
+      var eg = tcos * H[r], c = S[r * 2]
+      var last = c + S[r * 2 + 1] - 1
+      var p = 0, sh = 0, s = c, pk = -1
+      while c <= last + 1
+        var k = -1
+        if c <= last
+          var xn = real(c) - 3.5
+          var d = W ? (xn - eg) : (-eg - xn)
+          k = d >= 0.25 ? 2 : (d >= -0.75 ? 1 : 0)
+        end
+        if k != pk
+          if pk >= 0
+            p = p | ((0x100 | (pk << 6) | ((c - 1) << 3) | s) << sh)
+            sh += 9
+          end
+          s = c
+          pk = k
+        end
+        c += 1
+      end
+      D[r] = p
+      r += 1
+    end
+  end
+
+  def update_hour_tint()
+    var h = hour()
+    if h == self.lh return end
+    self.lh = h
+    if h < 4
+      self.ct = [0x0A1436, 0x123048]
+    elif h < 7
+      self.ct = [0x1C1440, 0x203A50]
+    elif h < 10
+      self.ct = [0x241A38, 0x2E3A4A]
+    elif h < 18
+      self.ct = [0x1A2038, 0x203A48]
+    elif h < 21
+      self.ct = [0x2A1430, 0x2E2A44]
+    else
+      self.ct = [0x121A3C, 0x16324A]
+    end
+  end
+
+  def shade()
+    var h = hour()
+    var m = minute()
+    if h == 6 && m < 30
+      self.dim = 15 + (m * 85) / 30
+    elif h == 20 && m >= 30
+      self.dim = 100 - ((m - 30) * 85) / 30
+      if self.dim < 15 self.dim = 15 end
+    elif h >= 21 || h < 6
+      self.dim = 15
+    else
+      self.dim = 100
+    end
+  end
+
+  def build_pal()
+    var b = self.mix(self.ct[0], self.ct[1], int(now_ms() / 400) % 100)
+    var bc = self.mix(b, 0x301550, 45)
+    var i = 0
+    while i < 16
+      var intn = 4 + i * 24 / 10
+      var bs = self.mix(0, b, intn)
+      var co
+      if i < 9
+        co = bs
+      else
+        co = self.mix(bs, self.mix(0, bc, intn), (i - 8) * 14)
+      end
+      self.pal[i] = self.mix(0, co, self.dim)
+      i += 1
+    end
+  end
+
+  # The nebula only moves when the drift step d changes (every 3.4 s), so its
+  # runs of equal level are packed here; draw() looks the colour up in pal,
+  # which loop() refreshes every tick.
+  def build_map()
+    var d = int(now_ms() / 3400) % 64
+    if d == self.lastd return end
+    self.lastd = d
+    var N = self.neb, R = self.nr, nl = N.size(), k = 0, y = 0
+    while y < 8
+      var yo = y * 64, m = 6 + y, x = 0, s = 0, pv = 0
+      while x <= 32
+        var n = 0
+        if x < 32
+          n = N[(yo + ((x + d) % 64)) % nl]
+          if n > 0
+            n = n * m / 13
+            if n > 15 n = 15 end
+          end
+        end
+        if n != pv
+          if pv > 0 && k < 64
+            R[k] = s | ((x - 1) << 5) | (y << 10) | ((pv - 1) << 13)
+            k += 1
+          end
+          s = x
+          pv = n
+        end
+        x += 1
+      end
+      y += 1
+    end
+    self.nn = k
+  end
+
+  def loop()
+    var t = now_ms()
+    self.shade()
+    self.update_hour_tint()
+    if !self.valid || t - self.lpc > 60000
+      self.compute_phase()
+      self.lpc = t
+    end
+    self.compute_position()
+    self.build_pal()
+    self.build_map()
+  end
+
+  def should_show()
+    if !self.valid return false end
+    if ALWAYS_SHOW return true end
+    var clock_minute = hour() * 60 + minute()
+    if clock_minute < MOON_START_MINUTE || clock_minute >= MOON_END_MINUTE return false end
+    return self.last_shown < 0 || now_ms() - self.last_shown >= MOON_REMINDER_MS
+  end
+
+  def duration()
+    return 11000
+  end
+
+  def draw()
+    clear()
+    var t = now_ms()
+    var c = (t - self.shown) % 11000
+    var cam = 0.0
+    if c >= 3800 && c < 4900
+      var p = real(c - 3800) / 1100.0
+      cam = 32.0 * (p * p * (3.0 - 2.0 * p))
+    elif c >= 4900 && c < 8800
+      cam = 32.0
+    elif c >= 8800 && c < 9900
+      var q = real(c - 8800) / 1100.0
+      cam = 32.0 * (1.0 - (q * q * (3.0 - 2.0 * q)))
+    end
+    var df = real(self.dim) / 100.0
+    self.draw_nebula()
+    self.draw_stars(t, cam, df)
+    self.draw_shooting_star(t, df)
+    self.draw_moon_body(cam)
+    self.draw_labels(cam)
+  end
+
+  # Black runs are skipped: after clear() they would change nothing.
+  def draw_nebula()
+    var R = self.nr, P = self.pal, n = self.nn, i = 0
+    while i < n
+      var p = R[i]
+      var col = P[p >> 13]
+      if col != 0
+        var a = p & 31, b = (p >> 5) & 31, y = (p >> 10) & 7
+        if a == b pixel(a, y, col) else line(a, y, b, y, col) end
+      end
+      i += 1
+    end
+  end
+
+  # One loop for 16 far and 8 near stars. sn() and mix(0, c, n) are inlined
+  # with the same float32 operations in the same order as v2.0 (tr*tr*tr is
+  # (tr*tr)*tr either way); n is always 0..100, so mix's clamp never fires.
+  # Near stars used index i+20 for i = 0..7, which is i+4 here.
+  def draw_stars(t, cam, df)
+    var T = self.st, S = self.sc, rt = real(t) / 2400.0, cf = cam * 0.34
+    var j = 0.4, a0 = 20.0, a1 = 80.0, w0 = 0.3, w1 = 0.7, o = 0, i = 0
+    while i < 24
+      if i == 16
+        rt = real(t) / 9000.0
+        cf = cam
+        j = 0.35
+        a0 = 24.0
+        a1 = 76.0
+        w0 = 0.25
+        w1 = 0.75
+        o = 4
+      end
+      var i4 = i * 4
+      var sx = int(real(T[i4]) - cf + 0.5)
+      if sx >= 0 && sx < 32
+        var P = T[i4 + 2] * 100
+        var pr = real((t + (i + o) * 370) % P) / real(P)
+        var tr = pr < 0.5 ? pr * 2.0 : 2.0 - pr * 2.0
+        var w = tr * tr
+        if i < 16 w = w * tr end
+        var x = rt + real(i + o) * j
+        x = x - int(x)
+        if x < 0.0 x = x + 1.0 end
+        var g = x > 0.5
+        if g x = x - 0.5 end
+        var f = x * 2.0
+        var u = f * (1.0 - f)
+        var v = 16.0 * u / (5.0 - 4.0 * u)
+        if g v = -v end
+        var n = int(real(int((a0 + a1 * w) * (v * w0 + w1))) * df)
+        var k = S[T[i4 + 3]]
+        pixel(sx, T[i4 + 1], ((((k >> 16) & 0xFF) * n / 100) << 16) | ((((k >> 8) & 0xFF) * n / 100) << 8) | ((k & 0xFF) * n / 100))
+      end
+      i += 1
+    end
+  end
+
+  def draw_shooting_star(t, df)
+    var mt = t % 47000
+    if mt >= 300 return end
+    var sl = int(t / 47000)
+    var pr = real(mt) / 300.0
+    var hx = real((sl * 7) % 26) + pr * 9.0
+    var hy = real((sl * 3) % 4) + pr * 5.0
+    var k = 0
+    while k < 5
+      var px = int(hx - real(k) * 1.6 + 0.5)
+      var py = int(hy - real(k) * 0.9 + 0.5)
+      if px >= 0 && px < 32 && py >= 0 && py < 8
+        pixel(px, py, self.mix(0, self.mc[k], int(real(100 - k * 15) * df)))
+      end
+      k += 1
+    end
+  end
+
+  def draw_moon_body(cam)
+    var bx = int(12.0 - cam + 0.5)
+    if self.illum >= 96 && bx > -10 && bx < 32
+      var hc = self.hc, S = self.span0, hr = 0
+      while hr < 8
+        var hr2 = hr * 2
+        self.fade_pixel(bx + S[hr2] - 1, hr, hc)
+        self.fade_pixel(bx + S[hr2] + S[hr2 + 1], hr, hc)
+        hr += 1
+      end
+    end
+    if bx <= -9 || bx >= 32 return end
+    # bx never exceeds 12 (cam is 0..32), so only the left fade band applies.
+    var c0 = self.dk, c1 = self.midc, c2 = self.litc, D = self.dr, r = 0
+    while r < 8
+      var p = D[r]
+      while p > 0
+        var a = bx + (p & 7), b = bx + ((p >> 3) & 7), k = (p >> 6) & 3
+        var col = k == 2 ? c2 : (k == 1 ? c1 : c0)
+        if a < 3
+          var x = a < 1 ? 1 : a
+          while x < 3 && x <= b
+            self.fade_pixel(x, r, col)
+            x += 1
+          end
+          a = 3
+        end
+        if a < b
+          line(a, r, b, r, col)
+        elif a == b
+          pixel(a, r, col)
+        end
+        p = p >> 9
+      end
+      r += 1
+    end
+  end
+
+  def draw_labels(cam)
+    var nx = int(34.0 - cam + 0.5)
+    if nx > -20 && nx < 32
+      text(nx, 6, self.pnm, self.ecl > 0 ? 0xE87A5A : 0xEEE3CE)
+    end
+    if self.pws != self.pcts
+      self.pw = text_ink_width(self.pcts)
+      self.pws = self.pcts
+    end
+    var px = int(62.0 - real(self.pw) - cam + 0.5)
+    if px > -20 && px < 32 text(px, 6, self.pcts, 0x8C9CBA) end
+  end
+end
+
+return Moon()

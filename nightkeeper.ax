@@ -1,0 +1,173 @@
+# @name    Nightkeeper
+# @desc    Bedtime fade, full blackout, and gentle morning fade
+# @author  Devyn + Codex + Claude
+# @version 3.0
+# @headless true
+
+var ENABLED = true
+var SLEEP_MIN = 1290       # 21:30
+var WAKE_MIN = 420         # 07:00
+var FADE_MIN = 30          # minutes each fade takes
+var DAY_BRIGHTNESS = 45
+var NIGHT_BRIGHTNESS = 1
+
+# Brightness is not perceived linearly: dropping 45 to 23 does not look half as
+# bright, it looks about three quarters as bright. A linear ramp therefore
+# seems to do nothing for ten minutes and then fall off a cliff, and v1.2's
+# smoothstep was worse still - its perceived steps varied by 30x across the
+# fade. This table is precomputed so that PERCEIVED brightness falls in equal
+# steps, which is what makes a fade feel even.
+#
+# Entry i is the level i minutes into the fade: first entry day, last night.
+# Regenerate it if DAY_BRIGHTNESS or NIGHT_BRIGHTNESS change -
+# test_nightkeeper_logic.py recomputes the gamma curve and will fail loudly.
+var RAMP = [45,42,40,37,35,32,30,28,26,24,22,20,18,16,15,13,12,11,9,8,7,6,5,4,4,3,2,2,1,1]
+
+# v3.0 switches the matrix with display.power() (firmware 1.1.1+) instead of
+# PATCHing its own HTTP API over loopback. That removes the in-flight request,
+# its timeout, its retry timer and the two-minute re-check: the call is
+# synchronous, and display.is_on() is cheap enough to read every tick. It also
+# sees a change made over HTTP - a phone, the web UI - within a second
+# (verified on the panel 2026-10-03), so a manual override is held as before.
+class Nightkeeper
+  var last_power, wanted_power, wanted_brightness, phase, said
+  var hold, last_brightness
+
+  def init()
+    self.last_power = nil
+    self.wanted_power = true
+    self.wanted_brightness = DAY_BRIGHTNESS
+    self.phase = ""
+    self.said = ""
+    self.hold = false
+    self.last_brightness = nil
+  end
+
+  def time_valid()
+    var y = year()
+    return y >= 2025 && y <= 2099
+  end
+
+  def desired_state()
+    var now = hour() * 60 + minute()
+
+    # 1. Blackout. Half-open on both ends so no minute is ambiguous.
+    if now >= SLEEP_MIN || now < WAKE_MIN
+      self.wanted_power = false
+      self.wanted_brightness = NIGHT_BRIGHTNESS
+      self.phase = "sleep"
+      return
+    end
+
+    self.wanted_power = true
+
+    # 2. Evening fade. Index runs 0..FADE_MIN-1 and lands on NIGHT at the
+    #    minute before blackout, so the power cut is invisible.
+    if now >= SLEEP_MIN - FADE_MIN
+      self.wanted_brightness = RAMP[now - (SLEEP_MIN - FADE_MIN)]
+      self.phase = "fade-down"
+
+    # 3. Morning fade. The same table walked backwards, so both fades share
+    #    one curve and cannot drift apart.
+    elif now < WAKE_MIN + FADE_MIN
+      self.wanted_brightness = RAMP[WAKE_MIN + FADE_MIN - 1 - now]
+      self.phase = "fade-up"
+
+    else
+      self.wanted_brightness = DAY_BRIGHTNESS
+      self.phase = "day"
+    end
+  end
+
+  def reconcile()
+    # No clock, no schedule. Hold whatever the panel is doing rather than
+    # guessing, because guessing wrong at 03:00 means a lit bedroom.
+    if !self.time_valid() return end
+
+    if ENABLED
+      self.desired_state()
+    else
+      # Disabled means a normal panel, not a dark one. v1.2 returned here,
+      # which stranded the display off if you disabled it during the night.
+      self.wanted_power = true
+      self.wanted_brightness = DAY_BRIGHTNESS
+      self.phase = "disabled"
+    end
+
+    # A scheduled transition always wins, and it clears any hold: the whole
+    # point of a hold is that it lasts until the next setpoint, not forever.
+    # Cleared before the setpoint is applied, so the new phase takes effect on
+    # this tick rather than one tick later.
+    if self.phase != self.said
+      self.hold = false
+    end
+
+    # Nightkeeper needs deterministic control of the level, so this stays
+    # forced even during a hold; without it the sensor would move brightness
+    # every tick and every tick would look like a person.
+    if settings.get("autoBrightness") != false
+      settings.set("autoBrightness", false)
+    end
+
+    # v2.0 held power for a manual override but re-forced brightness on every
+    # tick, so turning the panel on by hand at night left it on at level 1 and
+    # dimming it by hand was undone within a second. A hold has to cover the
+    # whole setpoint or it is not a hold. Same test as power: what the panel
+    # reports versus what this script last wrote.
+    var actual_brightness = settings.get("brightness")
+    # Adopt whatever the panel is showing the first time we look. v2.1 only
+    # recorded a level when it WROTE one, so a panel that already agreed with
+    # the schedule never established a baseline - and the first manual change
+    # then looked like "nothing written yet" and was overwritten anyway. Same
+    # shape as the moon crash: a sentinel for "unknown" that never resolved.
+    if self.last_brightness == nil
+      self.last_brightness = actual_brightness
+    end
+    if actual_brightness != self.last_brightness
+      if !self.hold
+        self.hold = true
+        log("nightkeeper: manual override held until the next transition")
+      end
+      self.last_brightness = actual_brightness
+    end
+
+    if !self.hold && actual_brightness != self.wanted_brightness
+      settings.set("brightness", self.wanted_brightness)
+      self.last_brightness = self.wanted_brightness
+    end
+
+    # Power gets the same treatment as brightness: what the panel is doing
+    # versus what this script last set. A disagreement means something else
+    # moved it - a phone, the web UI, another script - and that is a decision
+    # by a person, not drift to be corrected. Hold until the next transition.
+    var actual_power = display.is_on()
+    if self.last_power == nil
+      self.last_power = actual_power
+    end
+    if actual_power != self.last_power
+      if !self.hold
+        self.hold = true
+        log("nightkeeper: manual override held until the next transition")
+      end
+      self.last_power = actual_power
+    end
+
+    if !self.hold && actual_power != self.wanted_power
+      display.power(self.wanted_power)
+      self.last_power = self.wanted_power
+    end
+
+    # One line per phase change, so a misbehaving schedule is diagnosable
+    # from the panel log instead of by guesswork.
+    if self.phase != self.said
+      self.said = self.phase
+      log("nightkeeper: " + self.phase + " brightness=" + str(self.wanted_brightness))
+    end
+  end
+
+  def loop()
+    self.reconcile()
+  end
+end
+
+return Nightkeeper()

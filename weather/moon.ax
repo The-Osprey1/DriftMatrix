@@ -1,0 +1,185 @@
+# @name Moon
+# @desc Moon illumination with a plain direction cue and shimmering stars
+
+import math
+import wx
+
+class Moon
+  var disc, light, prior
+  var idx, illum, tick, shown, lo, hi, waxing, animate
+
+  def init()
+    self.disc = [0x3C, 0x7E, 0xFF, 0xFF, 0xFF, 0xFF, 0x7E, 0x3C]
+    self.light = self.phase(0)
+    self.prior = self.phase(7)
+    self.idx = 0
+    self.illum = 0
+    self.tick = 0
+    self.shown = now_ms()
+    self.lo = 0
+    self.hi = 2
+    self.waxing = true
+    self.animate = false
+  end
+
+  def phase(n)
+    var rows = [0, 0, 0, 0, 0, 0, 0, 0]
+    var y = 0
+    while y < 8
+      var curve = 0
+      if y == 0 || y == 7 curve = 2
+      elif y == 1 || y == 6 curve = 1 end
+      var x = 0
+      while x < 8
+        if ((self.disc[y] >> (7 - x)) & 1) == 1
+          var on = false
+          if n == 1 on = x >= (curve == 2 ? 5 : 6)
+          elif n == 2 on = x >= 4
+          elif n == 3 on = x >= 1 + curve
+          elif n == 4 on = true
+          elif n == 5 on = x <= 6 - curve
+          elif n == 6 on = x <= 3
+          elif n == 7 on = x <= (curve == 2 ? 2 : 1) end
+          if on rows[y] += 1 << (7 - x) end
+        end
+        x += 1
+      end
+      y += 1
+    end
+    return rows
+  end
+
+  def recalc()
+    if year() < 2020 return false end
+    var raw = (epoch_ms() / 86400000.0 - 10962.7604167) / 29.530588853
+    var p = raw - int(raw)
+    if p < 0 p += 1.0 end
+
+    self.illum = int((1.0 - math.cos(2.0 * math.pi * p)) * 50.0 + 0.5)
+    self.idx = int(p * 8.0 + 0.5) % 8
+    self.waxing = p < 0.5
+    self.light = self.phase(self.idx)
+    self.prior = self.phase((self.idx + 7) % 8)
+
+    if self.idx == 0
+      self.lo = 0 self.hi = 2
+    elif self.idx == 1
+      self.lo = 5 self.hi = 7
+    elif self.idx == 2
+      self.lo = 4 self.hi = 5
+    elif self.idx == 3
+      self.lo = 1 self.hi = 3
+    elif self.idx == 4
+      self.lo = 0 self.hi = 2
+    elif self.idx == 5
+      self.lo = 5 self.hi = 7
+    elif self.idx == 6
+      self.lo = 4 self.hi = 6
+    else
+      self.lo = 2 self.hi = 3
+    end
+
+    self.animate = !((self.idx == 0 && self.waxing) ||
+                     (self.idx == 4 && !self.waxing))
+    return true
+  end
+
+  def loop()
+    if self.tick <= 0 self.tick = self.recalc() ? 900 : 5 end
+    self.tick -= 1
+  end
+
+  def on_show()
+    self.recalc()
+    self.tick = 900
+    self.shown = now_ms()
+  end
+
+  def duration()
+    return 6000
+  end
+
+  def star(f, offset)
+    var p = (f + offset) % 12
+    if p == 5 || p == 6 return rgb(205, 225, 255) end
+    if p >= 2 && p <= 9 return rgb(125, 145, 190) end
+    return rgb(76, 88, 125)
+  end
+
+  def draw()
+    clear()
+    var moon = rgb(244, 233, 197)
+    var shade = rgb(92, 94, 112)
+    var head = self.waxing ? rgb(255, 216, 90) : rgb(118, 145, 210)
+    var elapsed = now_ms() - self.shown
+    if elapsed < 0 elapsed = 0 end
+
+    var stars = int((now_ms() / 300) % 12)
+    pixel(0, 0, self.star(stars, 0))
+    pixel(7, 0, self.star(stars, 3))
+    pixel(0, 7, self.star(stars, 7))
+    pixel(7, 7, self.star(stars, 10))
+    wx.blit(self.disc, 0, 0, shade)
+
+    var width = self.hi - self.lo + 1
+    var step = 0
+    if !self.animate
+      step = width + 1
+    elif elapsed >= 250
+      step = int((elapsed - 250) / 280)
+    end
+    if step > width step = width + 1 end
+
+    if step > width
+      wx.blit(self.light, 0, 0, moon)
+    else
+      wx.blit(self.prior, 0, 0, moon)
+      var i = 0
+      while i < width
+        var x = self.hi - i
+        var state = 0
+        if i < step - 1 state = 1
+        elif i == step - 1 state = 2 end
+
+        if state > 0
+          var changed = 0
+          var y = 0
+          while y < 8
+            var a = (self.prior[y] >> (7 - x)) & 1
+            var b = (self.light[y] >> (7 - x)) & 1
+            if a != b changed += 1 end
+            y += 1
+          end
+
+          y = 0
+          while y < 8
+            var a = (self.prior[y] >> (7 - x)) & 1
+            var b = (self.light[y] >> (7 - x)) & 1
+            if a != b
+              if state == 2 && changed > 2
+                pixel(x, y, head)
+              elif b == 1
+                pixel(x, y, moon)
+              else
+                pixel(x, y, shade)
+              end
+            end
+            y += 1
+          end
+        end
+        i += 1
+      end
+    end
+
+    var s
+    if elapsed < 1500
+      s = self.waxing ? "WAX" : "WANE"
+    else
+      s = str(self.illum) + "%"
+    end
+    var tint = self.waxing ? rgb(255, 205, 85) : rgb(158, 194, 255)
+    text(wx.center(s, wx.TX, wx.TW), wx.BASE, s, tint)
+  end
+end
+
+return Moon()

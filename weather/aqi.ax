@@ -1,0 +1,126 @@
+# @name Air quality
+# @desc US AQI with breathing lungs, the reading and a plain-language verdict
+
+import json
+import wx
+
+class Air
+var aqi, ticks, shown, lungs, airway, colors, gains
+
+def init()
+self.aqi = nil
+self.ticks = 0
+self.shown = now_ms()
+self.lungs = [0x18, 0x18, 0x3C, 0x66, 0xE7, 0xE7, 0x66, 0x24]
+self.airway = [0x18, 0x18, 0x3C, 0x24, 0x24, 0x24, 0x00, 0x00]
+# EPA category hues, lifted slightly so every layer survives low panel brightness.
+self.colors = [
+[64, 212, 92], [228, 202, 52], [255, 138, 40],
+[255, 64, 52], [168, 74, 208], [158, 34, 48]
+]
+self.gains = [65, 80, 100, 80]
+end
+
+def on_body(body, status)
+if body == nil return end
+var d = json.load(body)
+if !isinstance(d, map) return end
+var c = d.find("current")
+if c == nil return end
+var a = c.find("us_aqi")
+if a == nil return end
+self.aqi = int(a)
+end
+
+def loop()
+if self.ticks <= 0
+self.ticks = 900
+# Plain HTTP is deliberate: TLS starves this board while the weather apps run.
+http.get("http://air-quality-api.open-meteo.com/v1/air-quality?latitude=" + wx.LAT + "&longitude=" + wx.LON + "&current=us_aqi&timezone=auto", / b, st -> self.on_body(b, st))
+end
+self.ticks -= 1
+end
+
+def on_show()
+self.shown = now_ms()
+end
+
+def duration()
+return 6000
+end
+
+def level()
+var a = self.aqi
+if a <= 50 return 0 end
+if a <= 100 return 1 end
+if a <= 150 return 2 end
+if a <= 200 return 3 end
+if a <= 300 return 4 end
+return 5
+end
+
+def label(level)
+if level == 0 return "GOOD" end
+if level == 1 return "FAIR" end
+if level == 2 return "WARN" end
+if level == 3 return "BAD" end
+if level == 4 return "V.BAD" end
+return "HAZ"
+end
+
+def tint(raw, gain)
+return rgb(int(raw[0] * gain / 100), int(raw[1] * gain / 100), int(raw[2] * gain / 100))
+end
+
+def glow(raw)
+return rgb(
+int(raw[0] + (255 - raw[0]) * 0.55),
+int(raw[1] + (255 - raw[1]) * 0.55),
+int(raw[2] + (255 - raw[2]) * 0.55))
+end
+
+def lungs_icon(raw)
+var phase = int((now_ms() / 550) % 4)
+wx.blit(self.lungs, 0, 0, self.tint(raw, self.gains[phase]))
+wx.blit(self.airway, 0, 0, self.glow(raw))
+end
+
+def value_text()
+var a = self.aqi
+if a < 0 return "0" end
+if a > 500 return "500+" end
+return str(a)
+end
+
+def draw()
+clear()
+if self.aqi == nil
+self.lungs_icon([105, 120, 140])
+wx.stale()
+return
+end
+
+var level = self.level()
+var raw = self.colors[level]
+self.lungs_icon(raw)
+
+# One pass, never a looping carousel: identity, precision, then meaning.
+var elapsed = now_ms() - self.shown
+if elapsed < 0 elapsed = 0 end
+var s
+var ink
+if elapsed < 1250
+s = "AQI"
+ink = rgb(220, 235, 255)
+elif elapsed < 3750
+s = self.value_text()
+ink = self.tint(raw, 100)
+else
+s = self.label(level)
+ink = self.glow(raw)
+end
+text(wx.center(s, wx.TX, wx.TW), wx.BASE, s, ink)
+end
+end
+
+return Air()

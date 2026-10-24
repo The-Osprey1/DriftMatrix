@@ -1,0 +1,496 @@
+# @name    Sunset
+# @desc    Sunset descent with live sky colour, countdown and quality
+# @author  Devyn + Claude
+# @version 3.1
+
+import json
+import string
+
+# Self-contained: wx and wxfeed are not installed on this panel, and the
+# three-script stack does not fit the 98304-byte script heap.
+#
+# Plain http, not https, and deliberately. With a full script set the panel
+# logs "script http: heap too tight for TLS" and the fetch never happens. This
+# is a public, read-only, unauthenticated forecast with no credential or
+# personal data in it, so dropping TLS costs nothing and is what makes the
+# page work at all.
+var URL = "http://api.open-meteo.com/v1/forecast"
+          "?latitude=33.87529&longitude=-117.56644"
+          "&daily=sunrise,sunset&hourly=cloud_cover_low,cloud_cover_mid,cloud_cover_high"
+          "&forecast_days=1&forecast_hours=12&timezone=auto"
+
+# Minutes from sunset, then THREE colour stops: top, middle, horizon. v2 used
+# two, which made rows 1..5 one flat slab; the middle stop is where a real
+# sunset keeps its magenta.
+var KEYS = [
+  -75,  18,38, 96,   70, 96,150,  170,190,215,
+  -35,  22,44,110,   96,100,150,  250,196,120,
+  -12,  34,40,108,  130, 84,130,  255,150, 72,
+    0,  40,30, 92,  150, 60,105,  255,102, 60,
+    8,  34,20, 74,  150, 45,100,  255, 80, 96,
+   18,  20,12, 50,   95, 30, 78,  150, 45, 95,
+   28,   6, 5, 22,   24, 14, 44,   40, 18, 48
+]
+# Cloud decks: row, width, drift divisor, phase offset. Two is the most this
+# panel can carry before 256 pixels read as clutter.
+var DECKS = [1,11,2600,0, 4,8,4100,19]
+# y * 100 at eight equal steps of the approach. A table, not a square root:
+# the panel is heap-bound and a lookup is far cheaper than a Newton loop.
+var DESC = [860, 577, 460, 370, 294, 228, 167, 112, 60]
+var LEAD = 75
+var LOOP_LEAD = 60
+var URGENT_LEAD = 15
+var EARLY_REMINDER_MS = 600000
+var URGENT_REMINDER_MS = 120000
+# Only around sunset (2026-10-03): ocean holds the day and moon the night,
+# and this page publishes which of the three it is as shared "sunset.phase"
+# so the other two can step aside.  true keeps it in the loop all day.
+var ALWAYS_SHOW = false
+var BASE = 5
+var CREAM = 0xFFECCD
+var WCUT = [75, 50, 30]
+var WORD = ["EPIC", "GOOD", "FAIR", "DULL"]
+var WTINT = [0xFF78BE, 0xFFC864, 0xD6D6CE, 0x969CAA]
+
+class Sunset
+  var ok, t, dusk, q, cl, ch, top, mid, hor
+  var up, dn, cm, fresh, ticks, in_flight, fails, shown, last_shown, sx, sy
+
+  def init()
+    self.ok = false self.t = -999 self.dusk = 24
+    self.q = -1 self.cl = 0 self.ch = 0 self.cm = -1
+    self.up = nil self.dn = nil
+    self.fresh = 0 self.ticks = 0 self.in_flight = false
+    self.fails = -1
+    self.shown = now_ms()
+    self.last_shown = -1
+    self.sx = 2 self.sy = 9
+    self.top = [0, 0, 0] self.mid = [0, 0, 0] self.hor = [0, 0, 0]
+  end
+
+  def on_show()
+    self.shown = now_ms()
+    self.last_shown = self.shown
+  end
+
+  def mix(a, b, k) return a + int((b - a) * k / 100) end
+  def lum(c) return int((c[0] * 30 + c[1] * 59 + c[2] * 11) / 100) end
+
+  def at(l, i)
+    if l == nil || !isinstance(l, list) return nil end
+    if i < 0 || i >= size(l) return nil end
+    return l[i]
+  end
+
+  # "2026-08-20T19:31" -> 1171 minutes since local midnight.
+  def mins(c, field)
+    var v = self.at(c.find(field), 0)
+    if v == nil return nil end
+    var p = string.split(str(v), "T")
+    if size(p) < 2 return nil end
+    var hm = string.split(p[1], ":")
+    if size(hm) < 2 return nil end
+    return int(hm[0]) * 60 + int(hm[1])
+  end
+
+  # Noisy on the first failure, then rarely.
+  def fail(why)
+    self.in_flight = false
+    self.ticks = 60
+    if self.fails < 0 self.fails = 0 end
+    self.fails += 1
+    if self.fails == 1 || self.fails % 10 == 0 log("sunset: " + why) end
+  end
+
+  def on_body(body, status)
+    self.in_flight = false
+    if status != 200 || body == nil self.fail("HTTP " + str(status)) return end
+    var root = json.load(body)
+    if !isinstance(root, map) self.fail("bad JSON") return end
+    var day = root.find("daily")
+    var hr = root.find("hourly")
+    if !isinstance(day, map) || !isinstance(hr, map) self.fail("missing sections") return end
+    var up = self.mins(day, "sunrise")
+    var dn = self.mins(day, "sunset")
+    if up == nil || dn == nil self.fail("no sun times") return end
+    self.up = up
+    self.dn = dn
+
+    # Cloud layers at the hour containing sunset. Sunset sits outside the
+    # window for most of the morning, which is normal, not a fault.
+    self.cl = -1 self.cm = -1 self.ch = -1
+    var si = int(dn / 60) - hour()
+    if si >= 0 && si <= 11
+      var a = self.at(hr.find("cloud_cover_low"), si)
+      var b = self.at(hr.find("cloud_cover_mid"), si)
+      var c = self.at(hr.find("cloud_cover_high"), si)
+      if a != nil && b != nil && c != nil
+        self.cl = int(a) self.cm = int(b) self.ch = int(c)
+      end
+    end
+    if self.fails != 0
+      log("sunset: ok set=" + str(dn) + " low=" + str(self.cl) + " mid=" + str(self.cm) + " high=" + str(self.ch))
+      self.fails = 0
+    end
+    self.fresh = now_ms()
+    self.ticks = 600
+  end
+
+  # Cirrus is the canvas that catches light from under the horizon, a low deck
+  # blocks it, mid cloud helps until it is a lid. Clear is plain, not good.
+  def quality(low, mid, high)
+    var h = 60
+    if high <= 10 h = int(high * 15 / 10)
+    elif high <= 40 h = 15 + int((high - 10) * 15 / 10)
+    elif high > 70 h = 60 - int((high - 70) * 8 / 10) end
+    var m = mid <= 50 ? int(mid * 3 / 10) : 15 - int((mid - 50) * 3 / 10)
+    var l = 0
+    if low > 50 l = 24 + int((low - 50) * 16 / 10)
+    elif low > 20 l = int((low - 20) * 8 / 10) end
+    var s = 32 + h + m - l
+    if s < 0 s = 0 end
+    if s > 100 s = 100 end
+    return s
+  end
+
+  def recalc()
+    self.ok = false
+    if self.dn == nil || self.up == nil return end
+    if self.fresh == 0 || now_ms() - self.fresh > 5400000 return end
+    var span = self.dn - self.up
+    if span < 0 span += 1440 end
+    var off = 21 + int((span - 600) / 30)
+    if off < 21 off = 21 end
+    if off > 28 off = 28 end
+    self.dusk = off
+    self.t = hour() * 60 + minute() - self.dn
+    self.q = -1
+    if self.cl >= 0 && self.cm >= 0 && self.ch >= 0
+      self.q = self.quality(self.cl, self.cm, self.ch)
+    end
+    self.ok = true
+  end
+
+  def loop()
+    if !self.in_flight && self.ticks <= 0
+      self.in_flight = true
+      self.ticks = 60
+      http.get(URL, / b, st -> self.on_body(b, st))
+    end
+    if self.ticks > 0 self.ticks -= 1 end
+    self.recalc()
+    # day / sunset / night for ocean and moon.  Unpublished without fresh sun
+    # times, so they fall back to the clock instead of trusting a stale phase.
+    if self.ok
+      var m = hour() * 60 + minute()
+      var p = "sunset"
+      if m < self.up || self.t > self.dusk p = "night"
+      elif self.t < -LOOP_LEAD p = "day" end
+      shared.set("phase", p)
+    end
+  end
+
+  def should_show()
+    if !self.ok return false end
+    if ALWAYS_SHOW return true end
+    if self.t < -LOOP_LEAD || self.t > self.dusk return false end
+    var reminder = self.t >= -URGENT_LEAD ? URGENT_REMINDER_MS : EARLY_REMINDER_MS
+    return self.last_shown < 0 || now_ms() - self.last_shown >= reminder
+  end
+
+  def duration()
+    return 9000
+  end
+
+  def anchors()
+    var t = self.t
+    var n = size(KEYS) - 10
+    var i = 0
+    while i < n && t > KEYS[i + 10] i += 10 end
+    var j = i + 10
+    if j > n j = i end
+    var span = KEYS[j] - KEYS[i]
+    var k = span <= 0 ? 0 : int((t - KEYS[i]) * 100 / span)
+    if k < 0 k = 0 end
+    if k > 100 k = 100 end
+    var c = 0
+    while c < 3
+      self.top[c] = self.mix(KEYS[i + 1 + c], KEYS[j + 1 + c], k)
+      self.mid[c] = self.mix(KEYS[i + 4 + c], KEYS[j + 4 + c], k)
+      self.hor[c] = self.mix(KEYS[i + 7 + c], KEYS[j + 7 + c], k)
+      c += 1
+    end
+    # A poor forecast flattens toward grey, so the panel matches the window.
+    var amt = self.q < 0 ? 20 : int((100 - self.q) / 2)
+    if amt > 0
+      self.flatten(self.top, amt)
+      self.flatten(self.mid, amt)
+      self.flatten(self.hor, amt)
+    end
+  end
+
+  def flatten(c, amt)
+    var l = self.lum(c)
+    var i = 0
+    while i < 3
+      c[i] = self.mix(c[i], l, amt)
+      i += 1
+    end
+  end
+
+  # One channel of the sky at row y, w percent through that row's segment.
+  def band(y, w, i)
+    if y <= 4 return self.mix(self.top[i], self.mid[i], w) end
+    return self.mix(self.mid[i], self.hor[i], w)
+  end
+
+  def stop(y, w)
+    return rgb(self.band(y, w, 0), self.band(y, w, 1), self.band(y, w, 2))
+  end
+
+  # Eight rows can only hold eight tones, so every gradient bands. A one-line
+  # base plus a checkerboard of the next tone doubles the apparent depth for
+  # 16 extra pixels a row instead of 32.
+  def sky()
+    var y = 0
+    while y < 7
+      var w = y <= 4 ? y * 25 : (y - 4) * 50
+      var lo = w - 7
+      var hi = w + 7
+      if lo < 0 lo = 0 end
+      if hi > 100 hi = 100 end
+      line(0, y, 31, y, self.stop(y, lo))
+      var c = self.stop(y, hi)
+      var x = y % 2
+      while x < 32
+        pixel(x, y, c)
+        x += 2
+      end
+      y += 1
+    end
+  end
+
+  # A table-free ragged edge. Without it a deck is a rectangle, and rectangles
+  # do not read as cloud.
+  def ragged(x)
+    var h = x * 37 + 11
+    return (h ^ (h >> 3)) & 1
+  end
+
+  # Dark bodies with fire-lit undersides. That underside is the whole reason a
+  # sunset photograph works, and it costs one extra row per deck.
+  #
+  # Three things make it move without depending on t, which only ticks once a
+  # minute: the two decks drift in OPPOSITE directions, so the parallax is
+  # legible inside a nine second visit; each column's warmth falls off with
+  # distance from the sun, so a deck ignites as it slides past and cools as it
+  # leaves; and after sunset the light drains out of them into silhouette.
+  def clouds()
+    if self.ch < 20 return end
+    var n = self.ch < 55 ? 1 : 2
+    # Light drains from the decks after sunset, which is the classic look.
+    var burn = 100
+    if self.t > 0 burn = 100 - self.t * 4 end
+    if burn < 0 burn = 0 end
+    var d = 0
+    while d < n
+      var o = d * 4
+      var base = DECKS[o]
+      var step = int(now_ms() / DECKS[o + 2]) + DECKS[o + 3]
+      # Deck 1 runs the other way; counter-motion sells the depth.
+      var x0 = d == 0 ? (step % 46) - 8 : 38 - (step % 46)
+      var x1 = x0 + DECKS[o + 1]
+      var x = x0
+      while x <= x1
+        if x >= 0 && x < 32
+          var e = x - x0
+          var f = x1 - x
+          if f < e e = f end
+          var k = e >= 2 ? 72 : (e == 1 ? 40 : 18)
+          var row = base + (e >= 1 ? self.ragged(x + d * 5) : 0)
+          if row > 5 row = 5 end
+          var w = row <= 4 ? row * 25 : (row - 4) * 50
+          pixel(x, row, rgb(self.mix(self.band(row, w, 0), 56, k),
+                            self.mix(self.band(row, w, 1), 42, k),
+                            self.mix(self.band(row, w, 2), 62, k)))
+          var r2 = row + 1
+          if r2 < 7
+            # Warmth falls off with angular distance from the sun.
+            var away = x - self.sx
+            if away < 0 away = -away end
+            var lit = 100 - away * 4
+            if lit < 45 lit = 45 end
+            var w2 = r2 <= 4 ? r2 * 25 : (r2 - 4) * 50
+            var k2 = int(k * 90 * lit * burn / 1000000)
+            pixel(x, r2, rgb(self.mix(self.band(r2, w2, 0), 255, k2),
+                             self.mix(self.band(r2, w2, 1), 198, k2),
+                             self.mix(self.band(r2, w2, 2), 124, k2)))
+          end
+        end
+        x += 1
+      end
+      d += 1
+    end
+  end
+
+  # The disc crosses the whole panel and flattens as it drops, because real
+  # refraction squashes a low sun. It sets behind the land, not into a gap.
+  # Where the disc is. Resolved once per frame so the clouds can be lit from
+  # the same position that draws the sun.
+  def place()
+    var u = -self.t
+    if u < 0 u = 0 end
+    if u > LEAD u = LEAD end
+    var f = int(u * 800 / LEAD)
+    var i = int(f / 100)
+    if i > 7 i = 7 end
+    var k = f - i * 100
+    var cy100 = DESC[i] + int((DESC[i + 1] - DESC[i]) * k / 100)
+    self.sx = int((200 + (LEAD - u) * 2500 / LEAD) / 100)
+    self.sy = int((cy100 + 50) / 100)
+  end
+
+  def sun()
+    var cx = self.sx
+    var cy = self.sy
+    # Refraction flattens a low sun, but only by about a third. Squashing
+    # harder collapses the disc into a bar of light.
+    var sq = 100
+    if cy > 3 sq = 100 + (cy - 3) * 16 end
+    if sq > 150 sq = 150 end
+    var y = cy - 2
+    if y < 0 y = 0 end
+    var ye = cy + 2
+    if ye > 6 ye = 6 end
+    var x0 = cx - 4
+    if x0 < 0 x0 = 0 end
+    var xe = cx + 4
+    if xe > 31 xe = 31 end
+    while y <= ye
+      var w = y <= 4 ? y * 25 : (y - 4) * 50
+      var br = self.band(y, w, 0)
+      var bg = self.band(y, w, 1)
+      var bb = self.band(y, w, 2)
+      var dy = (y - cy) * sq / 100
+      var ey = int(dy * dy * 100 / 4)
+      var x = x0
+      while x <= xe
+        var dx = x - cx
+        var e = int(dx * dx * 100 / 13) + ey
+        if e < 100
+          var g = 100 - e
+          g = int(g * g * 200 / 10000)
+          if g > 100 g = 100 end
+          if g > 0 pixel(x, y, rgb(self.mix(br, 255, g), self.mix(bg, 249, g), self.mix(bb, 214, g))) end
+        end
+        x += 1
+      end
+      y += 1
+    end
+  end
+
+  # Integer sqrt of a 0..100 value, returned 0..100. Cheaper and safer than
+  # depending on a math import for one call.
+  # Row 7 is land, and doubles as an always-on progress bar so the countdown
+  # is readable even while the readout is hidden.
+  def ground()
+    var lr = int(self.hor[0] / 11) + 2
+    var lg = int(self.hor[1] / 12) + 2
+    var lb = int(self.hor[2] / 8) + 5
+    line(0, 7, 31, 7, rgb(lr, lg, lb))
+    if self.t >= 0 return end
+    var p = int((LEAD + self.t) * 31 / LEAD)
+    if p < 0 return end
+    if p > 31 p = 31 end
+    # Deliberately faint. It is a cue that the countdown is running, not a
+    # progress widget competing with the sky.
+    line(0, 7, p, 7, rgb(self.mix(lr, 255, 15), self.mix(lg, 150, 15), self.mix(lb, 90, 15)))
+  end
+
+  # First light overhead while the west still burns.
+  def clock(m)
+    while m >= 1440 m -= 1440 end
+    var h = int(m / 60)
+    var mm = m - h * 60
+    h = h % 12
+    if h == 0 h = 12 end
+    return str(h) + ":" + (mm < 10 ? "0" : "") + str(mm)
+  end
+
+  def verdict()
+    if self.q < 0 return -1 end
+    var i = 0
+    while i < 3 && self.q < WCUT[i] i += 1 end
+    return i
+  end
+
+  # The sky owns the first five seconds of every appearance. The readout then
+  # fades up, holds, and fades out - so the page reads as a window, not a
+  # dashboard, and the number is still there when you look for it.
+  def label()
+    # Modulo, not a plain difference: if on_show() is ever missed the fade
+    # still cycles instead of the readout disappearing forever.
+    var v = (now_ms() - self.shown) % 9000
+    if v < 0 v += 9000 end
+    var a = 0
+    if v >= 5000 && v < 5500
+      a = int((v - 5000) / 5)
+    elif v >= 5500 && v < 8400
+      a = 100
+    elif v >= 8400 && v < 8900
+      a = int((8900 - v) / 5)
+    end
+    if a <= 0 return end
+
+    var s = ""
+    var tint = CREAM
+    if self.t > 0
+      s = str(int(self.dusk - self.t)) + "M"
+    elif self.t == 0
+      s = "SET"
+    else
+      # Which secondary fact appears rotates slowly, so successive
+      # appearances are not identical.
+      var slot = int(now_ms() / 30000) % 3
+      if slot == 0
+        s = str(int(-self.t)) + "M"
+      elif slot == 1
+        s = self.clock(self.dn)
+      else
+        var i = self.verdict()
+        if i < 0
+          s = str(int(-self.t)) + "M"
+        else
+          s = WORD[i] tint = WTINT[i]
+        end
+      end
+    end
+    if s == "" return end
+
+    var x = 31 - text_ink_width(s)
+    if x < 12 x = 12 end
+    # A one-pixel shadow first, so the glyphs stay legible over the disc.
+    text(x + 1, BASE + 1, s, rgb(int(8 * a / 100), int(4 * a / 100), int(10 * a / 100)))
+    text(x, BASE, s, rgb(int(((tint >> 16) & 0xFF) * a / 100),
+                         int(((tint >> 8) & 0xFF) * a / 100),
+                         int((tint & 0xFF) * a / 100)))
+  end
+
+  def draw()
+    clear()
+    if !self.ok
+      var s = "--"
+      text(13, BASE, s, rgb(145, 100, 10))
+      return
+    end
+    self.anchors()
+    self.place()
+    self.sky()
+    self.clouds()
+    self.sun()
+    self.ground()
+    self.label()
+  end
+end
+
+return Sunset()

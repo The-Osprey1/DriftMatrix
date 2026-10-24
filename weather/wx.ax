@@ -1,0 +1,274 @@
+# @module wx
+# @desc Shared 8x8 weather icons, colours and layout helpers
+import json
+
+var wx = module("wx")
+wx.LAT = "33.87529"
+wx.LON = "-117.56644"
+wx.TX = 9
+wx.TW = 23
+wx.BASE = 6
+wx.CLOUD_BODY = [0x1C, 0x3E, 0x7E, 0xFF, 0x7E]
+wx.CLOUD_LIGHT = [0x08, 0x14, 0x20]
+wx.CLOUD_SHADE = [0x00, 0x00, 0x02, 0x07, 0x7E]
+wx.PART_CLOUD_BODY = [0x1C, 0x7E, 0xFF, 0x7E]
+wx.PART_CLOUD_LIGHT = [0x08, 0x14, 0x20]
+wx.PART_CLOUD_SHADE = [0x00, 0x00, 0x03, 0x3E]
+wx.SUN_DISC = [0x18, 0x3C, 0x3C, 0x18]
+wx.SUN_RAYS = [0x00, 0x42, 0x00, 0x00, 0x00, 0x00, 0x42, 0x00]
+wx.MOON = [0x00, 0x60, 0xE0, 0xE0, 0xF0, 0xFE, 0x7E, 0x18]
+wx.THERMO_OUTLINE = [0x38, 0x28, 0x28, 0x28, 0x28, 0x6C, 0x44, 0x38]
+wx.WIND_A = [16, 17, 18, 19, 20, 21, 14, 15, 23, 30, 29]
+wx.WIND_B = [41, 42, 43, 44, 45, 46, 55, 63, 62, 61]
+wx.UNKNOWN = [0x3C, 0x66, 0x06, 0x0C, 0x18, 0x00, 0x18, 0x18]
+
+wx.center = def (s, x0, w)
+  var tw = text_ink_width(s)
+  if tw >= w return x0 end
+  return int(x0 + ((w - tw) / 2))
+end
+
+wx.temp_tint = def (t)
+  if t == nil return rgb(120, 120, 120) end
+  if t <= 32 return rgb(120, 180, 255) end
+  if t <= 50 return rgb(80, 200, 255) end
+  if t <= 65 return rgb(90, 230, 160) end
+  if t <= 78 return rgb(240, 230, 90) end
+  if t <= 90 return rgb(255, 150, 40) end
+  return rgb(255, 60, 40)
+end
+
+wx.cat = def (code)
+  if code == nil return "unknown" end
+  var c = int(code)
+  if c == 0 return "sun" end
+  if c <= 2 return "part" end
+  if c == 3 return "cloud" end
+  if c >= 45 && c <= 48 return "fog" end
+  if c >= 51 && c <= 67 return "rain" end
+  if c >= 71 && c <= 77 return "snow" end
+  if c >= 80 && c <= 82 return "rain" end
+  if c == 85 || c == 86 return "snow" end
+  if c >= 95 && c <= 99 return "storm" end
+  return "cloud"
+end
+
+# Paint an 8-bit row mask into the fixed icon box: x=0..7, y=0..7.
+wx.blit = def (rows, x0, y0, tint)
+  var y = 0
+  while y < size(rows)
+    var bits = rows[y]
+    var x = 0
+    while x < 8
+      if ((bits >> (7 - x)) & 1) == 1
+        var px = x0 + x
+        var py = y0 + y
+        if px >= 0 && px <= 7 && py >= 0 && py <= 7 pixel(px, py, tint) end
+      end
+      x += 1
+    end
+    y += 1
+  end
+end
+
+# A five-row cloud with separate body, highlight and shadow layers.
+wx.cloud = def (y0, light, body, shade)
+  wx.blit(wx.CLOUD_BODY, 0, y0, body)
+  wx.blit(wx.CLOUD_LIGHT, 0, y0, light)
+  wx.blit(wx.CLOUD_SHADE, 0, y0, shade)
+end
+
+wx.part_cloud = def (light, body, shade)
+  wx.blit(wx.PART_CLOUD_BODY, 0, 4, body)
+  wx.blit(wx.PART_CLOUD_LIGHT, 0, 4, light)
+  wx.blit(wx.PART_CLOUD_SHADE, 0, 4, shade)
+end
+
+wx.sun = def (f)
+  wx.blit(wx.SUN_RAYS, 0, 0, rgb(255, 135, 10))
+  wx.blit(wx.SUN_DISC, 0, 2, rgb(255, 190, 25))
+  pixel(3, 3, rgb(255, 248, 190))
+  pixel(4, 4, rgb(245, 145, 10))
+end
+
+wx.part = def (f)
+  # Reuse the exact same circular sun. The shorter cloud exposes its round
+  # 2/4-pixel upper half instead of leaving one ambiguous sliver.
+  wx.sun(f)
+  wx.part_cloud(rgb(230, 240, 250), rgb(165, 178, 195), rgb(82, 94, 112))
+end
+
+wx.moon = def (f)
+  wx.blit(wx.MOON, 0, 0, rgb(184, 200, 255))
+  pixel(2, 1, rgb(242, 247, 255))
+  pixel(5, 6, rgb(117, 135, 199))
+end
+
+wx.part_night = def (f)
+  wx.moon(f)
+  wx.part_cloud(rgb(220, 232, 244), rgb(145, 162, 184), rgb(72, 86, 108))
+end
+
+wx.fog = def (f)
+  wx.cloud(0, rgb(225, 230, 235), rgb(155, 162, 172), rgb(82, 88, 100))
+  var phase = int((now_ms() / 600) % 2)
+  line(phase, 5, 6 + phase, 5, rgb(205, 215, 220))
+  line(1 - phase, 7, 7 - phase, 7, rgb(125, 140, 150))
+end
+
+wx.rain = def (f)
+  wx.cloud(0, rgb(185, 200, 220), rgb(105, 120, 145), rgb(52, 65, 88))
+  var phase = int((now_ms() / 240) % 2)
+  var i = 0
+  while i < 3
+    var x = 1 + (i * 3)
+    var y = 5 + int((phase + i) % 2)
+    pixel(x, y, rgb(65, 170, 255))
+    pixel(x - 1, y + 1, rgb(35, 105, 220))
+    i += 1
+  end
+end
+
+wx.snow = def (f)
+  wx.cloud(0, rgb(235, 242, 250), rgb(165, 180, 200), rgb(85, 100, 122))
+  # Two connected mini-flakes: no isolated pixel ever appears or disappears.
+  var ice = rgb(225, 245, 255)
+  pixel(2, 5, ice)
+  line(1, 6, 3, 6, ice)
+  pixel(2, 7, rgb(190, 225, 255))
+  pixel(6, 5, rgb(245, 252, 255))
+  line(5, 6, 7, 6, rgb(210, 238, 255))
+  pixel(6, 7, rgb(190, 225, 255))
+end
+
+wx.storm = def (f)
+  var flash = int((now_ms() / 120) % 25) == 0
+  wx.cloud(0, rgb(175, 180, 215), rgb(92, 94, 135), rgb(45, 45, 75))
+  var bolt = flash ? rgb(255, 250, 135) : rgb(255, 190, 25)
+  pixel(4, 4, bolt)
+  pixel(3, 5, bolt) pixel(4, 5, bolt)
+  pixel(3, 6, bolt)
+  pixel(2, 7, bolt)
+end
+
+wx.path = def (points, tint)
+  var i = 0
+  while i < size(points)
+    var p = points[i]
+    pixel(p % 8, int(p / 8), tint)
+    i += 1
+  end
+end
+
+wx.packet = def (points, head, soft, mid, bright)
+  var k = 0
+  while k < 2
+    var i = head - k
+    # Do not wrap the tail onto the disconnected far end of the curl. At the
+    # boundary that looked exactly like the stray blinking pixel we removed.
+    if i >= 0 && i < size(points)
+      var p = points[i]
+      var tint = k == 0 ? bright : (k == 1 ? mid : soft)
+      pixel(p % 8, int(p / 8), tint)
+    end
+    k += 1
+  end
+end
+
+wx.wind = def (f, mph)
+  var m = mph == nil ? 0 : mph
+  var step = 520 - int(m * 8)
+  if step < 260 step = 260 end
+  if step > 500 step = 500 end
+  var tick = int(now_ms() / step)
+  var base = rgb(94, 142, 175)
+  var soft = rgb(120, 200, 240)
+  var mid = rgb(169, 231, 255)
+  var bright = rgb(233, 251, 255)
+  wx.path(wx.WIND_A, base)
+  wx.path(wx.WIND_B, base)
+  wx.packet(wx.WIND_A, int(tick % size(wx.WIND_A)), soft, mid, bright)
+  wx.packet(wx.WIND_B, int((tick + 5) % size(wx.WIND_B)), soft, mid, bright)
+end
+
+# Backward-compatible thermometer for older pages. Its shell follows the
+# temperature hue, so no detached grey pixels can be mistaken for artifacts.
+wx.thermo = def (t, f)
+  var v = t == nil ? 50 : t
+  var tint = wx.temp_tint(v)
+  var level = int((v - 20) / 20)
+  if level < 0 level = 0 end
+  if level > 3 level = 3 end
+  var top = 4 - level
+  line(3, top, 3, 6, tint)
+  line(2, 6, 4, 6, tint)
+  wx.blit(wx.THERMO_OUTLINE, 0, 0, tint)
+end
+
+wx.unknown = def ()
+  wx.blit(wx.UNKNOWN, 0, 0, rgb(125, 130, 140))
+end
+
+wx.icon = def (code, f)
+  var k = wx.cat(code)
+  if k == "sun"
+    wx.sun(f)
+  elif k == "part"
+    wx.part(f)
+  elif k == "cloud"
+    wx.cloud(1, rgb(235, 242, 250), rgb(165, 178, 195), rgb(78, 90, 108))
+  elif k == "fog"
+    wx.fog(f)
+  elif k == "rain"
+    wx.rain(f)
+  elif k == "snow"
+    wx.snow(f)
+  elif k == "storm"
+    wx.storm(f)
+  else
+    wx.unknown()
+  end
+end
+
+# Current conditions need local day/night state. Daily forecasts deliberately
+# keep using icon(), because a whole-day summary is not a nighttime condition.
+wx.current_icon = def (code, isday, f)
+  var k = wx.cat(code)
+  if isday != nil && int(isday) == 0
+    if k == "sun"
+      wx.moon(f)
+      return
+    elif k == "part"
+      wx.part_night(f)
+      return
+    end
+  end
+  wx.icon(code, f)
+end
+
+# The feed publishes one atomic JSON snapshot. Parse it in each app's loop(),
+# never in draw(), so the 40 fps render path stays small and deterministic.
+wx.snapshot = def ()
+  var full = "wxfeed.data"
+  var age = shared.age(full)
+  if age == nil || age > 1800000 return nil end
+  var raw = shared.get(full)
+  if raw == nil return nil end
+  var d = json.load(raw)
+  if !isinstance(d, map) return nil end
+  return d
+end
+
+wx.val = def (key)
+  var full = "wxfeed." + key
+  var age = shared.age(full)
+  if age == nil || age > 2400000 return nil end
+  return shared.get(full)
+end
+
+wx.stale = def ()
+  var s = "--"
+  text(wx.center(s, wx.TX, wx.TW), wx.BASE, s, rgb(145, 100, 10))
+end
+
+return wx

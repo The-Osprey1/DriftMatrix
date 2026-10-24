@@ -1,0 +1,38 @@
+# @name Weather today
+# @desc Today's forecast condition with high and low temperatures
+
+import wx
+
+class Range
+  var data
+
+  def init()
+    self.data = nil
+  end
+
+  def loop()
+    self.data = wx.snapshot()
+  end
+
+  def draw()
+    clear()
+    var d = self.data
+    if d == nil wx.stale() return end
+    var hi = d.find("hi")
+    var lo = d.find("lo")
+    var code = d.find("dc")
+    if hi == nil || lo == nil || code == nil wx.stale() return end
+
+    # Daily weather_code is the day's forecast summary. It must not reuse the
+    # current-condition code, especially after dark.
+    wx.icon(code, 0)
+    var sh = str(int(hi))
+    var sl = str(int(lo))
+    var x = wx.center(sh + "/" + sl, wx.TX, wx.TW)
+    var a = text(x, wx.BASE, sh, rgb(255, 125, 35))
+    var b = text(x + a, wx.BASE, "/", rgb(145, 150, 160))
+    text(x + a + b, wx.BASE, sl, rgb(70, 185, 255))
+  end
+end
+
+return Range()

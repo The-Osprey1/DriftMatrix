@@ -1,0 +1,136 @@
+{
+  "panel_url": "http://192.168.1.90",
+  "quiet_hours": {
+    "start": "21:30",
+    "end": "07:00"
+  },
+  "desk_reminder": {
+    "enabled": false
+  },
+  "companion": {
+    "enabled": false,
+    "refresh_seconds": 15
+  },
+  "network_sentinel": {
+    "enabled": true,
+    "gateway": null,
+    "raw_targets": [
+      {
+        "host": "1.1.1.1",
+        "port": 443
+      },
+      {
+        "host": "8.8.8.8",
+        "port": 53
+      }
+    ],
+    "dns_host": "www.msftconnecttest.com",
+    "connectivity_url": "http://www.msftconnecttest.com/connecttest.txt",
+    "connectivity_expected": "Microsoft Connect Test",
+    "probe_interval_seconds": 5,
+    "dns_interval_seconds": 15,
+    "connectivity_interval_seconds": 30,
+    "alert_refresh_seconds": 15,
+    "alert_lifetime_seconds": 45,
+    "recovery_seconds": 12
+  },
+  "focus_sprint": {
+    "enabled": true,
+    "preset": "classic",
+    "motion": "calm",
+    "refresh_seconds": 5,
+    "static_refresh_seconds": 15,
+    "lifetime_seconds": 20,
+    "paused_visibility_seconds": 1800
+  },
+  "next_up": {
+    "enabled": false,
+    "sources": [],
+    "timezone": "America/Los_Angeles",
+    "include_all_day": false,
+    "aliases": {
+      "Dentist appointment": "DENTIST",
+      "Team stand-up": "STANDUP"
+    }
+  },
+  "planes": {
+    "enabled": false,
+    "radius_nm": 2.5,
+    "max_altitude_ft": 12000,
+    "include_light_aircraft": false,
+    "burst_poll_seconds": 20,
+    "relaxed_poll_seconds": 60
+  },
+  "quakes": {
+    "enabled": false,
+    "radius_km": 150,
+    "min_magnitude": 2.5
+  },
+  "game_mode": {
+    "enabled": false,
+    "extra_games": []
+  },
+  "iss": {
+    "enabled": false
+  },
+  "maintenance": {
+    "enabled": false,
+    "window_start": "21:35",
+    "window_end": "23:00",
+    "min_uptime_hours": 20,
+    "low_memory_reboot": true,
+    "low_memory_block_bytes": 0,
+    "low_memory_min_free_bytes": 8192
+  },
+  "panel_down_alert": {
+    "enabled": true,
+    "after_minutes": 10,
+    "min_gap_minutes": 30
+  },
+  "notifications": {
+    "enabled": false,
+    "max_age_minutes": 15,
+    "apps": [
+      {
+        "match": "outlook",
+        "label": "MAIL",
+        "icon": "mail"
+      },
+      {
+        "match": "mail",
+        "label": "MAIL",
+        "icon": "mail"
+      },
+      {
+        "match": "teams",
+        "label": "TEAMS",
+        "icon": "chat"
+      },
+      {
+        "match": "discord",
+        "label": "CHAT",
+        "icon": "chat"
+      },
+      {
+        "match": "slack",
+        "label": "SLACK",
+        "icon": "chat"
+      },
+      {
+        "match": "whatsapp",
+        "label": "CHAT",
+        "icon": "chat"
+      },
+      {
+        "match": "messenger",
+        "label": "CHAT",
+        "icon": "chat"
+      },
+      {
+        "match": "phone link",
+        "label": "TEXT",
+        "icon": "chat"
+      }
+    ]
+  }
+}

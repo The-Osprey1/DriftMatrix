@@ -1,0 +1,114 @@
+# @name Timepiece
+# @desc Large daypart clock with a split-flap minute roll and seconds horizon
+# @author Devyn + Codex
+# @version 2.0
+
+class Timepiece
+var glyphs, pearl, ice, mint, gold, coral, violet, track, tail
+
+def init()
+self.glyphs = [
+[0x6,0x9,0x9,0x9,0x9,0x9,0x6],
+[0x2,0x6,0x2,0x2,0x2,0x2,0x7],
+[0x6,0x9,0x1,0x2,0x4,0x8,0xF],
+[0xE,0x1,0x1,0x6,0x1,0x1,0xE],
+[0x2,0x6,0xA,0xA,0xF,0x2,0x2],
+[0xF,0x8,0x8,0xE,0x1,0x1,0xE],
+[0x6,0x8,0x8,0xE,0x9,0x9,0x6],
+[0xF,0x1,0x2,0x2,0x4,0x4,0x4],
+[0x6,0x9,0x9,0x6,0x9,0x9,0x6],
+[0x6,0x9,0x9,0x7,0x1,0x1,0x6]
+]
+self.pearl = rgb(255,247,232)
+self.ice = rgb(157,220,255)
+self.mint = rgb(99,255,177)
+self.gold = rgb(255,212,90)
+self.coral = rgb(255,102,94)
+self.violet = rgb(196,139,255)
+self.track = rgb(64,52,104)
+self.tail = rgb(73,155,130)
+end
+
+def should_show()
+return hour() >= 0
+end
+
+def duration()
+return 15000
+end
+
+def hour_ink(h)
+if h >= 6 && h < 12 return self.ice end
+if h >= 12 && h < 18 return self.gold end
+if h >= 18 && h < 22 return self.coral end
+return self.violet
+end
+
+def digit(n, x, ink, yoff)
+var rows = self.glyphs[n]
+for y:0..6
+var py = y + yoff
+if py >= 0 && py <= 6
+var row = rows[y]
+for dx:0..3
+if (row & (1 << (3 - dx))) != 0 pixel(x + dx, py, ink) end
+end
+end
+end
+end
+
+def face(h, m, yoff)
+var h12 = h % 12
+if h12 == 0 h12 = 12 end
+var x = h12 >= 10 ? 5 : 8
+var ink = self.hour_ink(h)
+if h12 >= 10
+self.digit(int(h12 / 10), x, ink, yoff)
+x += 5
+end
+self.digit(h12 % 10, x, ink, yoff)
+x += 5
+var colon = x
+x += 2
+self.digit(int(m / 10), x, self.pearl, yoff)
+x += 5
+self.digit(m % 10, x, self.pearl, yoff)
+return colon
+end
+
+def draw()
+clear()
+var h = hour()
+var m = minute()
+var s = second()
+if h < 0 || m < 0 || s < 0 return end
+
+var stamp = epoch_ms()
+var phase = stamp >= 0 ? int(stamp % 60000) : s * 1000
+var step = phase < 525 ? int(phase / 75) + 1 : 0
+var colon
+if step > 0
+var pm = (m + 59) % 60
+var ph = m == 0 ? (h + 23) % 24 : h
+self.face(ph, pm, -step)
+colon = self.face(h, m, 7 - step)
+else
+colon = self.face(h, m, 0)
+end
+
+var colon_ink = phase < 525 || phase >= 59800 ? self.pearl : self.mint
+pixel(colon, 2, colon_ink)
+pixel(colon, 4, colon_ink)
+
+for rx:0..31 pixel(rx, 7, self.track) end
+var head = int(phase * 32 / 60000)
+if head > 0
+for rx:0..(head - 1) pixel(rx, 7, self.tail) end
+end
+if head >= 2 pixel(head - 2, 7, self.mint) end
+if head >= 1 pixel(head - 1, 7, self.gold) end
+pixel(head, 7, self.pearl)
+end
+end
+
+return Timepiece()
