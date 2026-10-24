@@ -17,13 +17,102 @@ DriftMatrix drives a **32×8 WS2812B individually addressable RGB LED matrix** w
 | **LED Matrix Data (DIN)** | **`GPIO 32`** | High-speed WS2812B digital data stream |
 | **Power (VIN / 5V)** | **`5V / VBUS`** | Dedicated 5V rail (ensure adequate 2A+ supply) |
 | **Ground (GND)** | **`GND`** | Common ground shared with logic & power |
-| **Left Button** | `GPIO 26` | Physical navigation / app toggle |
-| **Select / Mid Button** | `GPIO 27` | Physical confirm / settings toggle |
-| **Right Button** | `GPIO 14` | Physical navigation / app toggle |
+| **Left Button** | `GPIO 26` | Physical navigation / app toggle (Active LOW) |
+| **Select / Mid Button** | `GPIO 27` | Physical confirm / settings toggle (Active LOW) |
+| **Right Button** | `GPIO 14` | Physical navigation / app toggle (Active LOW) |
 | **Light Sensor (LDR)** | `GPIO 35` | Ambient light ADC for automatic day/night dimming |
 | **Battery Voltage** | `GPIO 34` | Battery ADC via voltage divider |
 | **Buzzer** | `GPIO 15` | Audible alert & countdown notifications |
 | **I2C Bus (SDA / SCL)** | `GPIO 21` / `GPIO 22` | Sensor expansion (temperature, pressure, etc.) |
+
+### 🔌 Wiring Diagram & Schematic
+
+#### Circuit Overview
+
+```
+                      +---------------------------------------+
+                      |       5V Power Supply (>= 2A)         |
+                      +-------------------+-------------------+
+                                          |
+                         +----------------+----------------+
+                         |                                 |
+                        5V                                5V
+                         |                                 |
+                 +-------v-------+                 +-------v-------+
+                 |  ESP32 Board  |                 |  32x8 WS2812B |
+                 |               |                 |  LED Matrix   |
+                 |       GPIO 32 +---[ 330Ω-470Ω ]-+-> DIN         |
+                 |               |                 |               |
+                 |           GND +--------+--------+-> GND         |
+                 |               |        |        +---------------+
+                 |       GPIO 26 +--[Btn]-+ (Left)         |
+                 |       GPIO 27 +--[Btn]-+ (Select)  [ 1000 µF ]
+                 |       GPIO 14 +--[Btn]-+ (Right)   (across 5V & GND)
+                 |               |        |
+                 |       GPIO 35 +--[LDR]-+--> 3.3V (with 10k pull-down)
+                 |       GPIO 15 +--[Buzzer]-+
+                 +---------------+
+```
+
+#### Signal Flow Diagram
+
+```mermaid
+flowchart TD
+    subgraph PSU ["⚡ Power Supply (5V DC, ≥ 2A)"]
+        VCC["5V (+) Rail"]
+        GND_MAIN["GND (-) Rail"]
+    end
+
+    subgraph ESP ["🧠 ESP32 Controller"]
+        ESP_5V["VIN / 5V"]
+        ESP_GND["GND"]
+        ESP_G32["GPIO 32 (LED Data Out)"]
+        ESP_G26["GPIO 26 (Left Button)"]
+        ESP_G27["GPIO 27 (Select Button)"]
+        ESP_G14["GPIO 14 (Right Button)"]
+        ESP_G35["GPIO 35 (LDR ADC In)"]
+        ESP_G15["GPIO 15 (Buzzer PWM)"]
+        ESP_3V3["3.3V Out"]
+    end
+
+    subgraph MATRIX ["💡 32×8 WS2812B LED Matrix"]
+        MAT_5V["5V (Power)"]
+        MAT_DIN["DIN (Data In)"]
+        MAT_GND["GND (Ground)"]
+    end
+
+    subgraph CONTROLS ["🎛️ Peripherals & Controls"]
+        BTN_L["Left Button (NO)"]
+        BTN_M["Select Button (NO)"]
+        BTN_R["Right Button (NO)"]
+        BUZZ["Piezo Buzzer (+)"]
+        LDR["LDR Sensor Divider"]
+    end
+
+    %% Power Connections
+    VCC ==>|"5V Power Rail"| ESP_5V
+    VCC ==>|"5V Power Rail"| MAT_5V
+    GND_MAIN ==>|"Common Ground"| ESP_GND
+    GND_MAIN ==>|"Common Ground"| MAT_GND
+
+    %% Data Lines
+    ESP_G32 -->|"330Ω - 470Ω Resistor"| MAT_DIN
+
+    %% Buttons & Inputs
+    ESP_G26 --> BTN_L --> ESP_GND
+    ESP_G27 --> BTN_M --> ESP_GND
+    ESP_G14 --> BTN_R --> ESP_GND
+
+    %% Sensors & Outputs
+    ESP_G15 --> BUZZ --> ESP_GND
+    ESP_3V3 --> LDR --> ESP_G35
+```
+
+### ⚡ Wiring Best Practices
+1. **Bulk Capacitor:** Place a `1000 µF` (6.3V or higher) electrolytic capacitor across the matrix `5V` and `GND` power terminals to prevent initial inrush current from damaging the first LEDs.
+2. **Data Line Protection:** Place a `330Ω` to `470Ω` resistor in series between ESP32 **GPIO 32** and the matrix **DIN** line to suppress voltage spikes and reflections.
+3. **Common Ground:** Ensure the ESP32 ground and the matrix power supply ground are tied directly together.
+4. **Current Budget:** 256 RGB LEDs at full white can draw up to `~3.5A` to `~5A`. At typical brightness settings (15%–40% in Nightkeeper/Desk Companion), power draw remains under `0.8A`–`1.5A`, perfectly safe for a quality 5V 2A USB power source.
 
 ### Matrix Geometry Configuration
 
