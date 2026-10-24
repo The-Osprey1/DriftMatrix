@@ -289,15 +289,47 @@ pytest -q -p no:cacheprovider
 
 ---
 
-## 🌌 The Drift Hardware Ecosystem
+## 🌌 The Drift Hardware Ecosystem & Integration
 
-DriftMatrix works seamlessly alongside other custom hardware in the **Drift** series:
+DriftMatrix works seamlessly alongside other custom hardware in the **Drift** series through the **Drift-Link Central Coordinator (`drift_ecosystem.py`)**:
 
-| Device | Controller | Display / Actuator | Repository |
-| :--- | :--- | :--- | :--- |
-| **DriftPad** | Raspberry Pi Pico (RP2040) | 16 Hall-Effect Keys + SSD1306 OLED | [The-Osprey1/DriftPad](https://github.com/The-Osprey1/DriftPad) |
-| **Drift-Watch**| ESP32-S3 | 1.28" Round 240×240 IPS Touch LCD | [The-Osprey1/Drift-Watch](https://github.com/The-Osprey1/Drift-Watch) |
-| **DriftMatrix**| ESP32 | 32×8 WS2812B RGB LED Matrix | [The-Osprey1/DriftMatrix](https://github.com/The-Osprey1/DriftMatrix) |
+| Device | Controller | Display / Actuator | Role in Ecosystem | Repository |
+| :--- | :--- | :--- | :--- | :--- |
+| **DriftPad** | Raspberry Pi Pico (RP2040) | 16 Hall-Effect Keys + SSD1306 OLED | Primary Macro & Scene Controller | [The-Osprey1/DriftPad](https://github.com/The-Osprey1/DriftPad) |
+| **Drift-Watch**| ESP32-S3 | 1.28" Round 240×240 IPS Touch LCD | Wrist Companion & Sync Node | [The-Osprey1/Drift-Watch](https://github.com/The-Osprey1/Drift-Watch) |
+| **DriftMatrix**| ESP32 | 32×8 WS2812B RGB LED Matrix | Desktop Visual Hub & Telemetry Display | [The-Osprey1/DriftMatrix](https://github.com/The-Osprey1/DriftMatrix) |
+
+### ⚡ Cross-Device Workflows: Drift-Link Bridge
+
+With `drift_ecosystem.py`, all three devices actively coordinate in real time:
+
+1. **DriftPad Macro Triggers:**
+   * **Macro 1 (`F13` / `Ctrl+Alt+1`):** Instantly commands DriftMatrix to switch to **Now Playing** (Vinyl record & playback scroller).
+   * **Macro 2 (`F14` / `Ctrl+Alt+2`):** Switches DriftMatrix to **Moon Tracker** (real celestial ephemeris & craters).
+   * **Macro 3 (`F15` / `Ctrl+Alt+3`):** Switches DriftMatrix to **PC Telemetry** (GPU temp via `nvidia-smi` & CPU load).
+   * **Macro 4 (`F16` / `Ctrl+Alt+4`):** Switches DriftMatrix to **Ocean Waves** ambient focus visualizer.
+   * **`Ctrl+Alt+Space`:** Steps forward through the visualizer rotation (`moon` → `nowplaying` → `ocean` → `pcstats` → `weather`).
+   * **`Ctrl+Alt+0`:** Toggles DriftMatrix display power (Nightkeeper sleep mode).
+
+2. **Unified Hardware Status Dashboard:**
+   Run `python drift_ecosystem.py status` to poll and inspect connection health, firmware versions, battery voltages, and framerates across all three nodes:
+   ```
+   =================================================================
+              🌌 DRIFT HARDWARE ECOSYSTEM DASHBOARD            
+   =================================================================
+   [🟢 ONLINE ] DRIFTMATRIX (Wi-Fi (HTTP REST))  • 42 FPS • Heap: 48,780 B
+   [🟢 ONLINE ] DRIFTPAD (USB CDC + Keyboard)   • 16 Keys • OLED 128x64
+   [🟢 ONLINE ] DRIFT-WATCH (USB Serial CH343)   • ESP32-S3 • Touch LCD
+   -----------------------------------------------------------------
+     ⚡ FULL ECOSYSTEM SYNCHRONIZED — ALL 3 HARDWARE NODES ONLINE
+   =================================================================
+   ```
+
+3. **Running the Bridge Listener:**
+   ```bash
+   # Launch the real-time background hotkey & macro listener
+   python drift_ecosystem.py listen
+   ```
 
 ---
 
