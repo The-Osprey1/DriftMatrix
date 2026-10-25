@@ -403,9 +403,22 @@ def build_window(root, tmp_path, clocks, **options):
 
 def test_window_shows_the_text_on_top_and_updates_the_minutes(tk_root, tmp_path):
     clocks = Clocks()
-    window = build_window(tk_root, tmp_path, clocks)
+    calls = []
+    original_attributes = tk_root.attributes
+
+    def record_attributes(*args):
+        calls.append(args)
+        return original_attributes(*args)
+
+    # A plain function avoids retaining the Tk interpreter in a Mock's cycles,
+    # which could let a later worker-thread garbage collection finalize Tcl.
+    with patch.object(tk_root, "attributes", new=record_attributes):
+        window = build_window(tk_root, tmp_path, clocks)
+    assert ("-topmost", True) in calls
     assert tk_root.title() == popup.TITLE
-    assert int(tk_root.attributes("-topmost")) == 1
+    # Bare Xvfb has no window manager to acknowledge the requested stacking state.
+    if os.name == "nt":
+        assert int(tk_root.attributes("-topmost")) == 1
     assert "for 10 min (since 13:46)" in window.body.get()
     assert window.button.cget("text") == "Dismiss"
     clocks.wall += 30

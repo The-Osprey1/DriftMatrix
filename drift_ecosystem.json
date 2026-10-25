@@ -1,5 +1,5 @@
 {
-  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$schema": "./drift_ecosystem.schema.json",
   "version": "1.0.0",
   "ecosystem": {
     "name": "Drift Hardware Ecosystem",
@@ -20,7 +20,6 @@
       "pad": {
         "enabled": true,
         "vid": "0x2E8A",
-        "fallback_port": "COM3",
         "macro_mapping": {
           "1": {
             "name": "Now Playing",
@@ -49,15 +48,22 @@
             "target": "ocean",
             "hotkey_primary": "F16",
             "hotkey_secondary": "Ctrl+Alt+4"
+          },
+          "5": {
+            "name": "Cycle App",
+            "action": "cycle_app",
+            "hotkey_primary": "Ctrl+Alt+Space"
+          },
+          "6": {
+            "name": "Toggle Matrix Power",
+            "action": "toggle_power",
+            "hotkey_primary": "Ctrl+Alt+0"
           }
         }
       },
       "watch": {
         "enabled": true,
-        "vid": "0x1A86",
-        "fallback_port": "COM6",
-        "udp_discovery_port": 4210,
-        "haptic_alerts": true
+        "vid": "0x1A86"
       }
     }
   }

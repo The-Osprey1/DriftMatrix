@@ -2,19 +2,26 @@
 name = "awtrix"
 version = "1.0.0"
 description = "PC-side senders and tools for an AWTRIX NG 32x8 LED panel"
-requires-python = ">=3.13"
+requires-python = ">=3.10"
 dependencies = [
     "psutil>=7.2,<8",
     "requests>=2.32,<3",
     "Pillow>=11.1,<12",
     "icalendar>=7.3,<8",
     "recurring-ical-events>=3.8,<4",
+    "jsonschema>=4.23,<5",
+    "pyserial>=3.5,<4",
+    "winrt-Windows.Media.Control[all]==3.2.1; sys_platform == 'win32'",
+    "winrt-Windows.UI.Notifications.Management==3.2.1; sys_platform == 'win32'",
+    "tzdata; sys_platform == 'win32'",
 ]
 
 [project.optional-dependencies]
 dev = [
     "pytest>=8.3",
     "pytest-cov>=6.0",
+    "numpy>=1.26,<3",
+    "astropy>=6,<8",
 ]
 
 [tool.pytest.ini_options]

@@ -3,6 +3,9 @@ requests>=2.32,<3
 Pillow>=11.1,<12
 icalendar>=7.3,<8
 recurring-ical-events>=3.8,<4
+jsonschema>=4.23,<5
+pyserial>=3.5,<4
 # Windows-only senders (Now Playing, Notification Mirror)
-winrt-Windows.Media.Control[all]==3.2.1
-winrt-Windows.UI.Notifications.Management==3.2.1
+winrt-Windows.Media.Control[all]==3.2.1; sys_platform == 'win32'
+winrt-Windows.UI.Notifications.Management==3.2.1; sys_platform == 'win32'
+tzdata; sys_platform == 'win32'

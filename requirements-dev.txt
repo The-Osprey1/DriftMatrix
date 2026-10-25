@@ -1,0 +1,6 @@
+-r requirements.txt
+pytest>=8.3
+pytest-cov>=6.0
+# Independent moon accuracy checks and both float32 emulator backends.
+numpy>=1.26,<3
+astropy>=6,<8
