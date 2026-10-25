@@ -229,18 +229,18 @@ The PC companion services bridge local workstation state and cloud data directly
 python pc_stats_push.py
 
 # Launch Windows Media Manager bridge (Spotify/YouTube/Browser audio)
-python now_playing_bridge.py
+python now_playing_push.py
 
 # Start background utility orchestrator (Calendar, Commute, Weather feeds)
 python utility_hub.py
 
 # Launch Tkinter desk companion controls
-python desk_companion.py
+python desk_controls.py
 ```
 
 ### Key Services
 * **`pc_stats_push.py`:** Reads GPU temperature and memory using `nvidia-smi`, CPU usage, and RAM, updating the display on significant deltas with exponential backoff.
-* **`now_playing_bridge.py`:** Interfaces with `Windows.Media.Control.GlobalSystemMediaTransportControlsSessionManager` to capture real-time playback metadata.
+* **`now_playing_push.py`:** Captures Windows media metadata and runs the Now Playing sender. `now_playing_bridge.py` provides its HTTP bridge and script-installation helpers.
 * **`next_up.py` / `next_up_controller.py`:** Parses `.ics` calendar subscriptions, filtering out expired events and alerting before meetings.
 * **`commute_radar.py`:** Evaluates travel time and route conditions before scheduled departure times.
 * **`github_sentinel.py`:** Alerts on PR reviews, CI workflow completions, and notifications.
@@ -252,7 +252,12 @@ python desk_companion.py
 
 ### 1. Prerequisites
 * **Python 3.10 or newer**
+* Windows for media capture, native notifications, and global Drift-Link keyboard shortcuts. Core logic and previews also run on Linux.
 * **ESP32** flashed with AWTRIX NG `1.1.2` or later
+
+CI tests Python 3.10, 3.12, and 3.13 on Ubuntu and Windows. Windows-only dependencies are selected by platform markers; `tzdata` supplies Windows timezone data. USB port discovery uses `pyserial`, and ecosystem configuration validation uses `jsonschema`.
+
+Commands below use the Python interpreter selected for your environment. On the original Windows installation, use `& C:/Users/devyn/anaconda3/python.exe` in PowerShell in place of `python` if the bare command opens the Microsoft Store.
 
 ### 2. Installation
 ```bash
@@ -261,37 +266,60 @@ git clone https://github.com/The-Osprey1/DriftMatrix.git
 cd DriftMatrix
 
 # Install Python companion dependencies
-pip install -r requirements.txt
+python -m pip install -r requirements.txt
 ```
 
 ### 3. Configuration
-Copy the template configuration file:
+The Hub reads `%LOCALAPPDATA%/AWTRIX/utility_hub.json` by default on Windows. For a new installation, copy the template there without overwriting an existing configuration:
+
+```powershell
+$configDir = Join-Path $env:LOCALAPPDATA 'AWTRIX'
+New-Item -ItemType Directory -Force $configDir | Out-Null
+$configFile = Join-Path $configDir 'utility_hub.json'
+if (-not (Test-Path -LiteralPath $configFile)) {
+    Copy-Item utility_hub.example.json $configFile
+}
+python utility_hub.py
+```
+
+Alternatively, use a local configuration and pass its path explicitly:
+
 ```bash
 cp utility_hub.example.json utility_hub.json
+python utility_hub.py --config ./utility_hub.json
 ```
-Edit `utility_hub.json` with your panel IP (e.g., `http://192.168.1.90`) and local preferences.
+
+Edit the selected file with your panel IP and local preferences. The local `utility_hub.json` is ignored by Git. Drift-Link has a separate configuration, described below.
 
 ### 4. Deploying Apps to the Matrix
-Use the guarded script swapper and minifier:
-```bash
-# Minify Berry script to minimize ESP32 heap overhead
-python weather/minify_ax.py weather/moon-panel.ax
+Before a live change, capture and validate a rollback snapshot with `panel_snapshot.py`. A complete snapshot has a `manifest.json`; an incomplete capture is not a rollback set. Check the installed app version before choosing the rollback source.
 
-# Safely upload with automatic verification and rollback guard
-python script_swap.py moon weather/moon-panel.ax --expect-version 2.1
+The following example applies **only when Moon v2.0 is installed** and you are preparing v2.1. The dry run reads panel state but performs no panel writes or reboots:
+
+```bash
+# Optional offline minified output; the swapper also minifies automatically
+python weather/minify_ax.py weather/moon-panel.ax --out build/moon.min.ax
+
+# Validate the planned replacement without installing it
+python script_swap.py moon weather/moon-panel.ax --expect-version 2.1 --rollback weather/moon-panel-v2.0.ax --rollback-version 2.0 --dry-run
 ```
+
+After the snapshot and preflight are validated, removing `--dry-run` performs the guarded replacement and may reboot the panel. Use the source and version actually installed for `--rollback` and `--rollback-version`; do not assume the example matches your device.
 
 ### 5. Running Tests
 Run the comprehensive test suite verifying layout rules, API resilience, and companion bridges:
 ```bash
-pytest -q -p no:cacheprovider
+python -m pip install -r requirements-dev.txt
+python -m pytest -q -p no:cacheprovider
 ```
+
+On headless Linux, run tests under `xvfb-run -a` so the Tkinter window tests have a display. The development dependencies include NumPy and Astropy for the independent moon-accuracy checks. Tests use temporary state and mocked devices rather than the private live Hub configuration.
 
 ---
 
 ## 🌌 The Drift Hardware Ecosystem & Integration
 
-DriftMatrix works seamlessly alongside other custom hardware in the **Drift** series through the **Drift-Link Central Coordinator (`drift_ecosystem.py`)**:
+The **Drift-Link Central Coordinator (`drift_ecosystem.py`)** connects configured Windows keyboard shortcuts to DriftMatrix HTTP actions and reports candidate USB adapters for the other Drift devices. Firmware handshakes, watch synchronization, UDP discovery, and wearable alert delivery are not implemented.
 
 | Device | Controller | Display / Actuator | Role in Ecosystem | Repository |
 | :--- | :--- | :--- | :--- | :--- |
@@ -301,27 +329,27 @@ DriftMatrix works seamlessly alongside other custom hardware in the **Drift** se
 
 ### ⚡ Cross-Device Workflows: Drift-Link Bridge
 
-With `drift_ecosystem.py`, all three devices actively coordinate in real time:
+The shipped configuration supplies these keyboard shortcuts. They work with any keyboard or a DriftPad configured to emit those keys:
 
 1. **DriftPad Macro Triggers:**
    * **Macro 1 (`F13` / `Ctrl+Alt+1`):** Instantly commands DriftMatrix to switch to **Now Playing** (Vinyl record & playback scroller).
    * **Macro 2 (`F14` / `Ctrl+Alt+2`):** Switches DriftMatrix to **Moon Tracker** (real celestial ephemeris & craters).
    * **Macro 3 (`F15` / `Ctrl+Alt+3`):** Switches DriftMatrix to **PC Telemetry** (GPU temp via `nvidia-smi` & CPU load).
    * **Macro 4 (`F16` / `Ctrl+Alt+4`):** Switches DriftMatrix to **Ocean Waves** ambient focus visualizer.
-   * **`Ctrl+Alt+Space`:** Steps forward through the visualizer rotation (`moon` → `nowplaying` → `ocean` → `pcstats` → `weather`).
-   * **`Ctrl+Alt+0`:** Toggles DriftMatrix display power (Nightkeeper sleep mode).
+   * **`Ctrl+Alt+Space`:** Steps through the configured rotation (`moon` → `nowplaying` → `ocean` → `pcstats0` → `weatherbrief` → `timepiece`). A page must be installed or present to activate it.
+   * **`Ctrl+Alt+0`:** Toggles DriftMatrix display power. Nightkeeper retains its independent schedule.
 
 2. **Unified Hardware Status Dashboard:**
-   Run `python drift_ecosystem.py status` to poll and inspect connection health, firmware versions, battery voltages, and framerates across all three nodes:
+   Run `python drift_ecosystem.py status` to read matrix API health and enumerate candidate USB adapters. USB detection does not open a serial session or prove that firmware, rendering, or touch input is working. Example labels:
    ```
    =================================================================
               🌌 DRIFT HARDWARE ECOSYSTEM DASHBOARD            
    =================================================================
-   [🟢 ONLINE ] DRIFTMATRIX (Wi-Fi (HTTP REST))  • 42 FPS • Heap: 48,780 B
-   [🟢 ONLINE ] DRIFTPAD (USB CDC + Keyboard)   • 16 Keys • OLED 128x64
-   [🟢 ONLINE ] DRIFT-WATCH (USB Serial CH343)   • ESP32-S3 • Touch LCD
+   [API ONLINE] DRIFTMATRIX
+   [ADAPTER PRESENT] DRIFTPAD — firmware unverified
+   [ADAPTER PRESENT] DRIFT-WATCH — firmware unverified
    -----------------------------------------------------------------
-     ⚡ FULL ECOSYSTEM SYNCHRONIZED — ALL 3 HARDWARE NODES ONLINE
+   USB adapter presence does not verify firmware health or synchronization.
    =================================================================
    ```
 
@@ -330,6 +358,18 @@ With `drift_ecosystem.py`, all three devices actively coordinate in real time:
    # Launch the real-time background hotkey & macro listener
    python drift_ecosystem.py listen
    ```
+
+`drift_ecosystem.json` is an instance configuration referencing the separate Draft-07 `drift_ecosystem.schema.json`. To keep personal changes outside the tracked example, copy it to `drift_ecosystem.local.json` and select it with `--config`:
+
+```bash
+python drift_ecosystem.py listen --config ./drift_ecosystem.local.json
+```
+
+All three devices have an `enabled` flag. A disabled matrix receives no reads or writes, and disabling either the matrix or pad prevents hotkey registration. Disabling the watch prevents its USB enumeration. Each entry in `ecosystem.devices.pad.macro_mapping` specifies an action (`switch_app`, `cycle_app`, or `toggle_power`), a target for `switch_app`, and a primary and/or secondary hotkey. Entries may also set `enabled: false`.
+
+Hotkeys accept letters, digits, F1–F24, named keys such as `Space` and `Enter`, and `Ctrl`, `Alt`, `Shift`, and `Win` modifiers. Invalid or duplicate bindings are rejected before registration. If Windows refuses a binding, previously registered keys are released and the listener reports a failure. Matrix actions use the shared `panel_gate` lock, pacing, and journal under source `ecosystem`; they do not yet share the Utility Hub's in-process `PanelClient` policy.
+
+Invalid or missing selected configuration fails explicitly rather than silently enabling defaults. Legacy `fallback_port`, `udp_discovery_port`, and `haptic_alerts` fields are accepted as metadata for older configurations, but they do not establish serial connections, discover watches, or deliver haptics.
 
 ---
 

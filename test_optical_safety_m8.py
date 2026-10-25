@@ -5,7 +5,7 @@ Milestone 8 verification suite:
 - 1-bit Nightkeeper legibility: all non-black icon and text pixels have dominant channel >= 174.
 - Wire payload budget: serialized JSON payload <= 2,048 bytes across all moods and reminder texts.
 - Frame cadence: GIF frame durations are clean multiples of 120 ms.
-- Utility Hub configuration: %LOCALAPPDATA%\\AWTRIX\\utility_hub.json has companion enabled: true.
+- Utility Hub configuration accepts companion enabled: true in isolated state.
 """
 
 from __future__ import annotations
@@ -22,6 +22,7 @@ from PIL import Image
 
 import desk_companion as dc
 from icon_library import companion_icon
+import utility_hub
 import scene_preview as sp
 import visual_system as vs
 
@@ -34,22 +35,17 @@ class TestOpticalSafetyDeskCompanion(unittest.TestCase):
     """Audit suite for optical safety, payload budgets, and cadence."""
 
     def test_01_utility_hub_config_companion_enabled(self) -> None:
-        """Verify %LOCALAPPDATA%\\AWTRIX\\utility_hub.json has companion enabled: true."""
-        local_app_data = os.environ.get("LOCALAPPDATA")
-        self.assertIsNotNone(local_app_data, "LOCALAPPDATA environment variable is not set")
+        """Exercise the config loader without depending on a private installation."""
+        import tempfile
 
-        config_path = Path(local_app_data) / "AWTRIX" / "utility_hub.json"
-        self.assertTrue(config_path.is_file(), f"Configuration file not found: {config_path}")
-
-        with config_path.open("r", encoding="utf-8") as f:
-            cfg = json.load(f)
-
-        self.assertIn("companion", cfg, "companion key missing in utility_hub.json")
-        companion_cfg = cfg["companion"]
-        self.assertIsInstance(companion_cfg, dict, "companion config must be a dict")
-        self.assertIn("enabled", companion_cfg, "companion.enabled missing in utility_hub.json")
-        self.assertIs(companion_cfg["enabled"], True, "companion.enabled must be strictly true")
-        self.assertGreater(companion_cfg.get("refresh_seconds", 0), 0, "refresh_seconds must be > 0")
+        with tempfile.TemporaryDirectory() as directory:
+            config_path = Path(directory) / "utility_hub.json"
+            config_path.write_text(json.dumps({
+                "companion": {"enabled": True, "refresh_seconds": 240},
+            }), encoding="utf-8")
+            cfg = utility_hub.load_config(config_path)
+        self.assertIs(cfg.companion.enabled, True)
+        self.assertEqual(cfg.companion.refresh_seconds, 240)
 
     def test_02_column_8_strictly_black_gutter(self) -> None:
         """Inspect every pixel in column 8: assert strictly (0, 0, 0) black across all moods & texts."""

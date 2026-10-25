@@ -26,6 +26,8 @@ Because the ESP32 operates under tight memory constraints (interpreting Berry sc
 ### 2. PC Companion Services (Python)
 
 * Companion scripts must run on **Python 3.10+**.
+* CI covers Python 3.10, 3.12, and 3.13 on Ubuntu and Windows. Keep platform-specific dependencies behind environment markers in both `requirements.txt` and `pyproject.toml`; Windows requires `tzdata` for portable timezone support.
+* Put every panel mutation inside `panel_gate.mutation(...)` and record the response with `gate.observe(response)`. Hub services should use `PanelClient`, which applies that gate along with its transport policies.
 * Ensure all telemetry pushers handle panel disconnections gracefully with exponential backoff rather than spamming HTTP requests.
 * Never log or leak personal credentials, Wi-Fi keys, or private calendar URLs.
 
@@ -36,10 +38,15 @@ Because the ESP32 operates under tight memory constraints (interpreting Berry sc
 Before submitting a Pull Request, run the automated test suite:
 
 ```bash
-pytest -q -p no:cacheprovider
+python -m pip install -r requirements-dev.txt
+python -m pytest -q -p no:cacheprovider
 ```
 
 Ensure all tests pass and that any new companion service or matrix app includes corresponding unit tests or visual preview tests.
+
+Use `xvfb-run -a python -m pytest -q -p no:cacheprovider` on headless Linux, with Tk, Xvfb, and xauth installed. Do not exclude whole test modules to work around platform or configuration differences. Tests must use temporary configuration and mocked hardware, never require a personal live installation. OS-specific behavior may use narrowly scoped platform skips.
+
+Before any live panel mutation or reboot, capture a complete snapshot and validate the planned change and rollback source. Offline test success does not establish physical display behavior or device memory headroom.
 
 ---
 
