@@ -665,7 +665,7 @@ def _main(file: str | None = None, spec: str | None = None) -> SimpleNamespace:
     "modules, expected",
     [
         ({"pytest": ModuleType("pytest"), "__main__": _main("utility_hub.py")}, True),
-        ({"unittest": ModuleType("unittest"), "__main__": _main(r"C:\awtrix\test_pc_stats_push.py")}, True),
+        ({"unittest": ModuleType("unittest"), "__main__": _main(str(Path("awtrix") / "test_pc_stats_push.py"))}, True),
         ({"unittest": ModuleType("unittest"), "__main__": _main("__main__.py", "unittest.__main__")}, True),
         ({"unittest": ModuleType("unittest"), "__main__": _main(r"C:\awtrix\utility_hub.py")}, False),
         ({"__main__": _main(r"C:\awtrix\weather\aqi_brief_push.py", "aqi_brief_push")}, False),

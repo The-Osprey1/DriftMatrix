@@ -403,9 +403,13 @@ def build_window(root, tmp_path, clocks, **options):
 
 def test_window_shows_the_text_on_top_and_updates_the_minutes(tk_root, tmp_path):
     clocks = Clocks()
-    window = build_window(tk_root, tmp_path, clocks)
+    with patch.object(tk_root, "attributes", wraps=tk_root.attributes) as attributes:
+        window = build_window(tk_root, tmp_path, clocks)
+        attributes.assert_any_call("-topmost", True)
     assert tk_root.title() == popup.TITLE
-    assert int(tk_root.attributes("-topmost")) == 1
+    # Bare Xvfb has no window manager to acknowledge the requested stacking state.
+    if os.name == "nt":
+        assert int(tk_root.attributes("-topmost")) == 1
     assert "for 10 min (since 13:46)" in window.body.get()
     assert window.button.cget("text") == "Dismiss"
     clocks.wall += 30

@@ -26,7 +26,8 @@ HEALTH_LOG_NAME = "panel_health.jsonl"
 # Lines are UTF-8 (not \u escapes), and the writer caps every text field in
 # characters: ``app`` and ``reason`` 32, ``wstate`` 16, ``werr`` 48. Measured
 # worst case, every one at its cap in 4-byte characters and every number at
-# its uint32 maximum: 751 bytes (367 if the text is ASCII). Such lines would
+# its uint32 maximum: 751 bytes (367 if ASCII) with Windows CRLF, one byte less
+# with Linux LF. Such lines would
 # shorten a file's window in proportion; of the 2,997 real lines on 2026-10-09
 # the longest was 158 bytes, and none held a non-ASCII character.
 HEALTH_LOG_MAX_BYTES = 1_000_000

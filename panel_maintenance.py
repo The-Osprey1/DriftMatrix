@@ -323,7 +323,9 @@ def judge_restart_power(started: datetime, checked: datetime, before: bool | Non
 def _local_time(value: Any) -> datetime | None:
     """A history timestamp as naive local time, or None if it is not one."""
     try:
-        at = datetime.fromisoformat(str(value))
+        # Python 3.10 accepts the explicit UTC offset but not the ISO-8601 Z suffix.
+        stamp = str(value)
+        at = datetime.fromisoformat(stamp[:-1] + "+00:00" if stamp.endswith("Z") else stamp)
         if at.tzinfo is not None:
             at = at.astimezone().replace(tzinfo=None)
     except (TypeError, ValueError, OverflowError, OSError):

@@ -1,4 +1,5 @@
 import json
+import os
 from unittest.mock import Mock
 
 import hub_status as status
@@ -122,12 +123,13 @@ def test_health_line_size_matches_the_rotation_comment(tmp_path):
         json.loads(body.decode("utf-8"))
         return len(body)
 
-    # "751 bytes (367 if the text is ASCII)" in the comment: every text field at
-    # its cap, every number at its uint32 maximum.
-    assert line_bytes("x") == 367
-    assert line_bytes("\U0001F600") == 751
-    assert line_bytes("\U0001F600", cap_factor=20) == 751  # the writer caps, whoever built the record
-    assert max(line_bytes(c) for c in ('"', "\\", "あ", "é")) < 751
+    # Every text field at its cap and numbers at their uint32 maximum.
+    # Text-mode writes use CRLF on Windows and LF on Linux.
+    newline_extra = len(os.linesep.encode("ascii")) - 1
+    assert line_bytes("x") == 366 + newline_extra
+    assert line_bytes("\U0001F600") == 750 + newline_extra
+    assert line_bytes("\U0001F600", cap_factor=20) == 750 + newline_extra
+    assert max(line_bytes(c) for c in ('"', "\\", "あ", "é")) < 750 + newline_extra
     # The review's case: 1,069 bytes when the line was \u-escaped ASCII.
     review = tmp_path / 'review.jsonl'
     status.append_health(review, DeviceHealth(1, current_app="é" * 40, wifi_state="é" * 20,
