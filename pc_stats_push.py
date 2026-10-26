@@ -44,6 +44,7 @@ except ImportError:
         r"C:\Users\devyn\anaconda3\python.exe -m pip install psutil requests pillow"
     )
 
+import firmware_compat
 import panel_gate
 import threading
 from service_runtime import DriftMatrixConfig, run_owned, worker_adapter, wait, in_quiet_hours
@@ -1106,6 +1107,7 @@ def sync_panel(
         if page is None:
             return current_labels, rejection
 
+        page = firmware_compat.prepare_payload(settings.panel_url if settings else AWTRIX, page)
         with panel_gate.mutation(GATE_SOURCE, "push", APP_NAME, body=page) as gate:
             response = requests.put(push_url, json=page, timeout=timeout)
             gate.observe(response)
@@ -1133,6 +1135,7 @@ def read_panel_health(*, settings: PCSettings | None = None) -> PanelHealth | No
         return None
     if uptime < 0:
         return None
+    firmware_compat.observe_device(settings.panel_url if settings else AWTRIX, body)
     return PanelHealth(uptime, reset_reason)
 
 

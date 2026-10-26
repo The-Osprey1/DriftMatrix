@@ -24,6 +24,7 @@ from typing import Any, Dict, Optional
 import requests
 from jsonschema import Draft7Validator
 
+import firmware_compat
 import panel_gate
 from service_runtime import DriftMatrixConfig, run_owned, worker_adapter
 from focus_control import default_data_dir
@@ -186,6 +187,7 @@ class DriftEcosystem:
             res = self.session.get(f"{self.matrix_url}/api/v1/device", timeout=1.5)
             if res.status_code == 200:
                 data = res.json()
+                firmware_compat.observe_device(self.matrix_url, data)
                 return DeviceStatus(
                     name="DriftMatrix",
                     connected=True,
@@ -347,6 +349,7 @@ class DriftEcosystem:
             if icon:
                 payload["icon"] = icon
 
+            payload = firmware_compat.prepare_payload(self.matrix_url, payload)
             with panel_gate.mutation("ecosystem", "push", "drift_alert", body=payload) as gate:
                 res = self.session.put(
                     f"{self.matrix_url}/api/v1/apps/pushed/drift_alert",

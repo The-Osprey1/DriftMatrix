@@ -37,7 +37,7 @@ packages = ["driftmatrix_config", "weather"]
 py-modules = [
     "calendar_source", "commute_radar", "config_loader", "config_migration",
     "desk_companion", "desk_reminder", "drift_ecosystem", "drift_link_core", "driftmatrix",
-    "focus_control", "focus_controller", "focus_sprint", "focus_sprint_preview",
+    "firmware_compat", "focus_control", "focus_controller", "focus_sprint", "focus_sprint_preview",
     "game_mode", "github_sentinel", "hub_status", "icon_library", "iss_watch",
     "meeting_sentinel", "meridian_preview", "miku_sentinel", "network_sentinel",
     "network_sentinel_preview", "next_up", "next_up_controller", "next_up_preview",

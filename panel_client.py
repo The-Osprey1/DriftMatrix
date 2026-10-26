@@ -24,6 +24,7 @@ from urllib.parse import quote
 
 import requests
 
+import firmware_compat
 import panel_gate
 
 
@@ -542,7 +543,7 @@ class PanelClient:
             "put",
             PUSHED_APP_PATH.format(name=segment),
             operation=f"push {name}",
-            json=dict(selected),
+            json=firmware_compat.prepare_payload(self.base_url, selected),
         )
 
     # Compact alias for callers that prefer transport verbs.
@@ -658,6 +659,7 @@ class PanelClient:
             raise PanelProtocolError("device response has no valid uptimeSeconds") from error
         if uptime < 0:
             raise PanelProtocolError("device uptimeSeconds cannot be negative")
+        firmware_compat.observe_device(self.base_url, body)
         reason_value = body.get("resetReason")
         reason = None if reason_value is None else str(reason_value)
 
