@@ -98,6 +98,9 @@ class InvalidStateError(FocusControlError, ValueError):
 def default_data_dir() -> Path:
     """Return the per-user AWTRIX data directory without creating it."""
 
+    from runtime_paths import current_data_dir
+    if current_data_dir() is not None:
+        return current_data_dir()
     local = os.environ.get("LOCALAPPDATA")
     root = Path(local) if local else Path.home() / "AppData" / "Local"
     return root / "AWTRIX"

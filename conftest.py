@@ -10,6 +10,7 @@ import pytest
 from unittest.mock import MagicMock
 
 import panel_gate
+import service_runtime
 from panel_client import PanelClient
 from visual_system import (
     WIDTH,
@@ -34,6 +35,15 @@ from visual_system import (
 # ---------------------------------------------------------------------------
 
 _gate_dirs = itertools.count()
+
+
+@pytest.fixture(autouse=True)
+def _service_lock_isolation(tmp_path_factory, monkeypatch):
+    """Legacy main() tests must never create ownership files in live state."""
+    from hashlib import sha256
+    root = tmp_path_factory.getbasetemp() / "service_ownership"
+    monkeypatch.setattr(service_runtime, "ownership_root", lambda path:
+                        root / sha256(str(Path(path).resolve()).encode()).hexdigest()[:20])
 
 
 @pytest.fixture(scope="session")

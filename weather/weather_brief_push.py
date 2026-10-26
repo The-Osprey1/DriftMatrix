@@ -50,6 +50,9 @@ if _ROOT not in sys.path:
     sys.path.append(_ROOT)
 from visual_system import MIST, render_glance_lane  # noqa: E402
 import panel_gate  # noqa: E402
+import threading
+from service_runtime import DriftMatrixConfig, run_owned, worker_adapter, wait
+from focus_control import default_data_dir
 
 try:
     from .weather_brief_preview import (
@@ -726,11 +729,12 @@ def fetch_weather(
     latitude: float = LATITUDE,
     longitude: float = LONGITUDE,
     now: datetime | None = None,
+    *, timeout: float = REQUEST_TIMEOUT_SECONDS,
 ) -> WeatherSnapshot:
     response = session.get(
         OPEN_METEO_URL,
         params=request_params(latitude, longitude),
-        timeout=REQUEST_TIMEOUT_SECONDS,
+        timeout=timeout,
     )
     response.raise_for_status()
     payload = response.json()
@@ -739,26 +743,26 @@ def fetch_weather(
     return parse_weather(payload, now=now)
 
 
-def push_payload(session: requests.Session, base_url: str, payload: Mapping[str, Any]) -> None:
+def push_payload(session: requests.Session, base_url: str, payload: Mapping[str, Any], *, timeout: float = REQUEST_TIMEOUT_SECONDS) -> None:
     body = dict(payload)
     with panel_gate.mutation(GATE_SOURCE, "push", APP_NAME, body=body) as gate:
         response = session.put(
             f"{base_url.rstrip('/')}{PUSH_PATH}",
             json=body,
-            timeout=REQUEST_TIMEOUT_SECONDS,
+            timeout=timeout,
         )
         gate.observe(response)
     if not 200 <= response.status_code < 300:
         raise RuntimeError(f"AWTRIX HTTP {response.status_code}: {response.text[:200]}")
 
 
-def read_panel_health(session: requests.Session, base_url: str) -> PanelHealth | None:
+def read_panel_health(session: requests.Session, base_url: str, *, timeout: float = REQUEST_TIMEOUT_SECONDS) -> PanelHealth | None:
     """Read a boot marker without touching display or framebuffer state."""
 
     try:
         response = session.get(
             f"{base_url.rstrip('/')}{DEVICE_PATH}",
-            timeout=REQUEST_TIMEOUT_SECONDS,
+            timeout=timeout,
         )
     except requests.RequestException:
         return None
@@ -817,84 +821,107 @@ def run(
     dry_run: bool = False,
     static_only: bool = False,
     preview_path: Path | None = None,
+    *, stop_event=None, refresh_seconds=None, request_timeout_seconds=None,
+    quiet_hours=None, timezone_name=None,
 ) -> None:
+    refresh = REFRESH_SECONDS if refresh_seconds is None else float(refresh_seconds)
+    def http(function, *args):
+        return function(*args, **({"timeout": request_timeout_seconds} if request_timeout_seconds is not None else {}))
     session = requests.Session()
     try:
-        import ssl
-        import truststore
-        from requests.adapters import HTTPAdapter
-
-        context = truststore.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
-
-        class _Adapter(HTTPAdapter):
-            def init_poolmanager(self, *args: Any, **kw: Any) -> Any:
-                kw["ssl_context"] = context
-                return super().init_poolmanager(*args, **kw)
-
-        session.mount("https://", _Adapter())
-    except (ImportError, AttributeError):
-        pass
-    session.headers.update({"User-Agent": "AWTRIX-WeatherBrief/1.0"})
-    api_failures = 0
-    panel_failures = 0
-    safe_mode = bool(static_only)
-    previous_health: PanelHealth | None = None
-    animated_push_succeeded = False
-    print(f"Weather Brief -> {awtrix.rstrip('/')}{PUSH_PATH} every {REFRESH_SECONDS}s")
-    while True:
         try:
-            snapshot = fetch_weather(session, latitude, longitude)
-            scene = choose_scene(snapshot)
-            api_failures = 0
-        except (requests.RequestException, ValueError, OSError) as error:
-            api_failures += 1
-            if api_failures in (1, 3) or api_failures % 12 == 0:
-                print(f"Weather data unavailable ({api_failures}): {error}")
-            if once:
-                raise
-            delay = min(REFRESH_SECONDS, 15 * (2 ** min(api_failures - 1, 5)))
-            time.sleep(delay)
-            continue
+            import ssl
+            import truststore
+            from requests.adapters import HTTPAdapter
 
-        if not dry_run:
-            health = read_panel_health(session, awtrix)
-            if animated_push_succeeded and unplanned_reboot(previous_health, health):
-                safe_mode = True
-                print("Panel reboot detected after animated weather; using static icon safety mode")
-            if health is not None:
-                previous_health = health
+            context = truststore.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
 
-        payload = build_payload(scene, animated=not safe_mode)
-        if preview_path is not None:
-            saved = save_preview(scene, preview_path)
-            print(f"Preview: {saved}")
-        if dry_run:
-            body_size = len(json.dumps(payload, separators=(",", ":")).encode("utf-8"))
-            print(f"Dry run: {_scene_summary(scene)}; payload={body_size} bytes")
-            panel_failures = 0
-        else:
+            class _Adapter(HTTPAdapter):
+                def init_poolmanager(self, *args: Any, **kw: Any) -> Any:
+                    kw["ssl_context"] = context
+                    return super().init_poolmanager(*args, **kw)
+
+            session.mount("https://", _Adapter())
+        except (ImportError, AttributeError):
+            pass
+        session.headers.update({"User-Agent": "AWTRIX-WeatherBrief/1.0"})
+        api_failures = 0
+        panel_failures = 0
+        safe_mode = bool(static_only)
+        previous_health: PanelHealth | None = None
+        animated_push_succeeded = False
+        print(f"Weather Brief -> {awtrix.rstrip('/')}{PUSH_PATH} every {refresh}s")
+        while stop_event is None or not stop_event.is_set():
             try:
-                push_payload(session, awtrix, payload)
-                animated_push_succeeded = animated_push_succeeded or not safe_mode
-                panel_failures = 0
-                print(f"Updated: {_scene_summary(scene)}{' [static safety]' if safe_mode else ''}")
-            except (requests.RequestException, RuntimeError, OSError) as error:
-                panel_failures += 1
-                if panel_failures >= SAFE_MODE_FAILURES and not safe_mode:
-                    safe_mode = True
-                    print("Repeated panel failures; latching static icon safety mode")
-                if panel_failures in (1, 3, SAFE_MODE_FAILURES) or panel_failures % 12 == 0:
-                    print(f"Panel unavailable ({panel_failures}): {error}")
+                snapshot = http(fetch_weather, session, latitude, longitude)
+                scene = choose_scene(snapshot)
+                api_failures = 0
+            except (requests.RequestException, ValueError, OSError) as error:
+                api_failures += 1
+                if api_failures in (1, 3) or api_failures % 12 == 0:
+                    print(f"Weather data unavailable ({api_failures}): {error}")
                 if once:
                     raise
-                delay = min(REFRESH_SECONDS, 15 * (2 ** min(panel_failures - 1, 5)))
-                time.sleep(delay)
+                delay = min(refresh, 15 * (2 ** min(api_failures - 1, 5)))
+                wait(stop_event, delay, sleep=time.sleep)
                 continue
 
-        if once:
-            return
-        delay = REFRESH_SECONDS
-        time.sleep(delay)
+            if stop_event is not None and stop_event.is_set():
+                return
+
+            if not dry_run:
+                health = http(read_panel_health, session, awtrix)
+                if animated_push_succeeded and unplanned_reboot(previous_health, health):
+                    safe_mode = True
+                    print("Panel reboot detected after animated weather; using static icon safety mode")
+                if health is not None:
+                    previous_health = health
+
+            payload = build_payload(scene, animated=not safe_mode)
+            if preview_path is not None:
+                saved = save_preview(scene, preview_path)
+                print(f"Preview: {saved}")
+            if dry_run:
+                body_size = len(json.dumps(payload, separators=(",", ":")).encode("utf-8"))
+                print(f"Dry run: {_scene_summary(scene)}; payload={body_size} bytes")
+                panel_failures = 0
+            else:
+                try:
+                    if stop_event is not None and stop_event.is_set():
+                        return
+                    http(push_payload, session, awtrix, payload)
+                    animated_push_succeeded = animated_push_succeeded or not safe_mode
+                    panel_failures = 0
+                    print(f"Updated: {_scene_summary(scene)}{' [static safety]' if safe_mode else ''}")
+                except (requests.RequestException, RuntimeError, OSError) as error:
+                    panel_failures += 1
+                    if panel_failures >= SAFE_MODE_FAILURES and not safe_mode:
+                        safe_mode = True
+                        print("Repeated panel failures; latching static icon safety mode")
+                    if panel_failures in (1, 3, SAFE_MODE_FAILURES) or panel_failures % 12 == 0:
+                        print(f"Panel unavailable ({panel_failures}): {error}")
+                    if once:
+                        raise
+                    delay = min(refresh, 15 * (2 ** min(panel_failures - 1, 5)))
+                    wait(stop_event, delay, sleep=time.sleep)
+                    continue
+
+            if once:
+                return
+            delay = refresh
+            wait(stop_event, delay, sleep=time.sleep)
+    finally:
+        session.close()
+
+
+@worker_adapter("weather")
+def run_worker(config: DriftMatrixConfig, stop_event: threading.Event) -> int:
+    options = config.services["weather"].options
+    run(awtrix=config.panel.url, latitude=options["latitude"], longitude=options["longitude"],
+        static_only=options.get("static_only", False), stop_event=stop_event,
+        refresh_seconds=options.get("refresh_seconds"), request_timeout_seconds=options.get("request_timeout_seconds"),
+        quiet_hours=config.panel.quiet_hours, timezone_name=config.panel.timezone)
+    return 0
 
 
 def parse_args() -> argparse.Namespace:
@@ -913,9 +940,10 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def main() -> None:
+def main() -> int:
     args = parse_args()
-    try:
+    stop_event = threading.Event()
+    def execute():
         run(
             awtrix=args.awtrix,
             latitude=args.latitude,
@@ -924,9 +952,9 @@ def main() -> None:
             dry_run=args.dry_run,
             static_only=args.static,
             preview_path=args.preview,
+            stop_event=stop_event,
         )
-    except KeyboardInterrupt:
-        print("\nStopped. The weather app will remove itself if it is not refreshed.")
+    return run_owned("weather", args.awtrix, default_data_dir(), stop_event, execute)
 
 
 if __name__ == "__main__":
@@ -938,7 +966,7 @@ if __name__ == "__main__":
 
     log = sender_logging.configure("weather_brief")
     try:
-        main()
+        raise SystemExit(main())
     except Exception:
         log.exception("sender stopped on an unhandled error")
         raise

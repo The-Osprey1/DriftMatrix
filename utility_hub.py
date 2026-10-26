@@ -15,8 +15,11 @@ import json
 import logging
 from logging.handlers import RotatingFileHandler
 import os
+import threading
+
+from service_runtime import DriftMatrixConfig, run_owned, worker_adapter, wait
 from dataclasses import dataclass, field
-from datetime import time as wall_time
+from datetime import time as wall_time, datetime
 from pathlib import Path
 from typing import Any, Callable, Mapping, Protocol, Sequence
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
@@ -58,6 +61,9 @@ PANEL_FAILURE_BACKOFF_SECONDS = (1.0, 2.0, 4.0, 8.0, 16.0, 30.0)
 
 
 def default_config_path() -> Path:
+    from runtime_paths import current_data_dir
+    if current_data_dir() is not None:
+        return current_data_dir() / "utility_hub.json"
     local = os.environ.get("LOCALAPPDATA")
     root = Path(local) if local else Path.home() / "AppData" / "Local"
     return root / "AWTRIX" / "utility_hub.json"
@@ -672,9 +678,11 @@ class UtilityHubRunner:
         self.clock = clock or SystemClock()
         self.logger = logger or logging.getLogger("awtrix.utility_hub")
 
-    def tick(self) -> list[object | None]:
+    def tick(self, stop_event=None) -> list[object | None]:
         results: list[object | None] = []
         for service in self.services:
+            if stop_event is not None and stop_event.is_set():
+                break
             try:
                 results.append(service.tick())
             except Exception:
@@ -682,12 +690,12 @@ class UtilityHubRunner:
                 results.append(None)
         return results
 
-    def run_forever(self) -> None:
-        while True:
+    def run_forever(self, stop_event=None) -> None:
+        while stop_event is None or not stop_event.is_set():
             started = self.clock.monotonic()
-            self.tick()
+            self.tick(stop_event)
             elapsed = self.clock.monotonic() - started
-            self.clock.sleep(max(0.0, self.interval_seconds - elapsed))
+            wait(stop_event, self.interval_seconds - elapsed, sleep=self.clock.sleep)
 
 
 @dataclass(frozen=True)
@@ -1202,7 +1210,7 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def main() -> None:
+def main(stop_event=None) -> int:
     args = parse_args()
     config = load_config(args.config)
     if args.once:
@@ -1223,179 +1231,204 @@ def main() -> None:
             )
         )
         return
+    return run_owned("hub", config.panel_url, default_config_path().parent,
+                     stop_event or threading.Event(), lambda: run_hub(config, stop_event))
+
+
+@worker_adapter("hub")
+def run_worker(config: DriftMatrixConfig, stop_event: threading.Event) -> int:
+    value = config.to_mapping()["services"]["hub"]["options"]
+    value["panel_url"] = config.panel.url
+    value["quiet_hours"] = dict(config.panel.quiet_hours)
+    value.setdefault("next_up", {})["timezone"] = config.panel.timezone
+    run_hub(config_from_mapping(value), stop_event, timezone_name=config.panel.timezone)
+    return 0
+
+
+def run_hub(config: HubConfig, stop_event=None, *, timezone_name=None) -> None:
     logger = configure_logging()
     clock = SystemClock()
+    if timezone_name is not None:
+        class WorkerClock(SystemClock):
+            def wall_now(self):
+                return datetime.now(ZoneInfo(timezone_name))
+        clock = WorkerClock()
     panel = build_panel_client(config, clock=clock)
-    services: list[HubService] = []
-    names: list[str] = []
-    # The heartbeat must keep running even when the only page has a long keepalive.
-    intervals: list[float] = [hub_status.PROBE_INTERVAL_SECONDS]
-    network_controller = None
-    if config.network.enabled:
-        network_controller = build_controller(
-            config,
-            clock=clock,
-            panel=panel,
-            logger=logger.getChild("network"),
-        )
-        services.append(network_controller)
-        names.append("Network Sentinel")
-        intervals.append(config.network.probe_interval_seconds)
-    if config.next_up.enabled:
-        if config.next_up.sources:
+    try:
+        services: list[HubService] = []
+        names: list[str] = []
+        # The heartbeat must keep running even when the only page has a long keepalive.
+        intervals: list[float] = [hub_status.PROBE_INTERVAL_SECONDS]
+        network_controller = None
+        if config.network.enabled:
+            network_controller = build_controller(
+                config,
+                clock=clock,
+                panel=panel,
+                logger=logger.getChild("network"),
+            )
+            services.append(network_controller)
+            names.append("Network Sentinel")
+            intervals.append(config.network.probe_interval_seconds)
+        if config.next_up.enabled:
+            if config.next_up.sources:
+                services.append(
+                    build_next_up_controller(
+                        config,
+                        panel,
+                        clock=clock,
+                        logger=logger.getChild("next_up"),
+                    )
+                )
+                names.append("Next Up")
+                intervals.append(5.0)
+            else:
+                logger.warning(
+                    "Next Up is enabled but no calendar source is configured; service is idle"
+                )
+        if config.focus.enabled:
             services.append(
-                build_next_up_controller(
+                build_focus_controller(
+                    config,
+                    panel,
+                    logger=logger.getChild("focus"),
+                )
+            )
+            names.append("Focus Sprint")
+            intervals.append(config.focus.refresh_seconds)
+        if config.meeting.enabled:
+            services.append(
+                build_meeting_controller(
                     config,
                     panel,
                     clock=clock,
-                    logger=logger.getChild("next_up"),
+                    logger=logger.getChild("meeting"),
                 )
             )
-            names.append("Next Up")
-            intervals.append(5.0)
-        else:
-            logger.warning(
-                "Next Up is enabled but no calendar source is configured; service is idle"
+            names.append("Meeting Sentinel")
+            intervals.append(config.meeting.refresh_seconds)
+        if config.github.enabled and config.github.repos:
+            services.append(
+                build_github_controller(
+                    config,
+                    panel,
+                    clock=clock,
+                    logger=logger.getChild("github"),
+                )
             )
-    if config.focus.enabled:
-        services.append(
-            build_focus_controller(
-                config,
-                panel,
-                logger=logger.getChild("focus"),
+            names.append("GitHub Sentinel")
+            intervals.append(config.github.poll_interval_seconds)
+        if config.companion.enabled:
+            services.append(
+                build_companion_controller(
+                    config,
+                    panel,
+                    clock=clock,
+                    logger=logger.getChild("companion"),
+                )
             )
-        )
-        names.append("Focus Sprint")
-        intervals.append(config.focus.refresh_seconds)
-    if config.meeting.enabled:
-        services.append(
-            build_meeting_controller(
-                config,
-                panel,
-                clock=clock,
-                logger=logger.getChild("meeting"),
+            names.append("Desk Companion")
+            intervals.append(config.companion.refresh_seconds)
+        if config.commute.enabled:
+            services.append(
+                build_commute_controller(
+                    config,
+                    panel,
+                    clock=clock,
+                    logger=logger.getChild("commute"),
+                )
             )
-        )
-        names.append("Meeting Sentinel")
-        intervals.append(config.meeting.refresh_seconds)
-    if config.github.enabled and config.github.repos:
-        services.append(
-            build_github_controller(
-                config,
-                panel,
-                clock=clock,
-                logger=logger.getChild("github"),
+            names.append("Commute Radar")
+            intervals.append(config.commute.refresh_seconds)
+        if config.miku.enabled:
+            services.append(
+                build_miku_controller(
+                    config,
+                    panel,
+                    clock=clock,
+                    logger=logger.getChild("miku"),
+                )
             )
-        )
-        names.append("GitHub Sentinel")
-        intervals.append(config.github.poll_interval_seconds)
-    if config.companion.enabled:
-        services.append(
-            build_companion_controller(
-                config,
-                panel,
-                clock=clock,
-                logger=logger.getChild("companion"),
+            names.append("Miku Sentinel")
+            intervals.append(config.miku.refresh_seconds)
+        if config.planes.enabled:
+            cfg = sky_watch.SkyWatchConfig(
+                radius_nm=config.planes.radius_nm,
+                max_altitude_ft=config.planes.max_altitude_ft,
+                include_light_aircraft=config.planes.include_light_aircraft,
+                burst_poll_seconds=config.planes.burst_poll_seconds,
+                relaxed_poll_seconds=config.planes.relaxed_poll_seconds,
             )
-        )
-        names.append("Desk Companion")
-        intervals.append(config.companion.refresh_seconds)
-    if config.commute.enabled:
-        services.append(
-            build_commute_controller(
-                config,
-                panel,
-                clock=clock,
-                logger=logger.getChild("commute"),
+            services.append(sky_watch.SkyWatchController(panel, cfg, logger=logger.getChild("planes")))
+            names.append("Planes Overhead")
+            intervals.append(cfg.burst_poll_seconds)
+        if config.quakes.enabled:
+            cfg = quake_watch.QuakeWatchConfig(
+                radius_km=config.quakes.radius_km, min_magnitude=config.quakes.min_magnitude,
             )
-        )
-        names.append("Commute Radar")
-        intervals.append(config.commute.refresh_seconds)
-    if config.miku.enabled:
-        services.append(
-            build_miku_controller(
-                config,
-                panel,
-                clock=clock,
-                logger=logger.getChild("miku"),
+            services.append(quake_watch.QuakeWatchController(panel, cfg, logger=logger.getChild("quakes")))
+            names.append("Quake Watch")
+            intervals.append(cfg.poll_seconds)
+        if config.game_mode.enabled:
+            cfg = game_mode.GameModeConfig(extra_games=config.game_mode.extra_games)
+            services.append(game_mode.GameModeController(panel, cfg, logger=logger.getChild("game")))
+            names.append("Game Mode")
+            intervals.append(cfg.poll_seconds)
+        if config.iss.enabled:
+            cfg = iss_watch.IssWatchConfig(
+                quiet_start_minute=config.quiet_start_minute, quiet_end_minute=config.quiet_end_minute,
             )
+            services.append(iss_watch.IssWatchController(panel, cfg, logger=logger.getChild("iss")))
+            names.append("ISS Watch")
+            intervals.append(cfg.burst_poll_seconds)
+        if config.maintenance.enabled:
+            cfg = build_maintenance_config(config.maintenance)
+            services.append(panel_maintenance.MaintenanceController(
+                panel, cfg, logger=logger.getChild("maintenance")))
+            names.append("Panel Maintenance")
+            intervals.append(cfg.poll_seconds)
+        if config.notifications.enabled:
+            cfg = notify_mirror.NotifyMirrorConfig(
+                rules=config.notifications.rules, max_age_minutes=config.notifications.max_age_minutes,
+            )
+            services.append(notify_mirror.NotifyMirrorController(
+                panel, cfg, logger=logger.getChild("notifications")))
+            names.append("Notification Mirror")
+            intervals.append(cfg.poll_seconds)
+        reminder_controller = None
+        if config.reminders_enabled:
+            reminder_controller = desk_reminder.ReminderController(panel)
+            services.append(reminder_controller)
+            names.append("Desk Reminder")
+            intervals.append(desk_reminder.REFRESH_SECONDS)
+        if not services:
+            raise SystemExit("No Utility Hub services are enabled and configured")
+        # The sentinel ticks first, so each probe reads its state for that tick.
+        reporter = hub_status.HubStatusReporter(
+            panel, reminders_enabled=config.reminders_enabled, reminder=reminder_controller,
+            pc_offline=network_controller.pc_offline if network_controller is not None else None,
         )
-        names.append("Miku Sentinel")
-        intervals.append(config.miku.refresh_seconds)
-    if config.planes.enabled:
-        cfg = sky_watch.SkyWatchConfig(
-            radius_nm=config.planes.radius_nm,
-            max_altitude_ft=config.planes.max_altitude_ft,
-            include_light_aircraft=config.planes.include_light_aircraft,
-            burst_poll_seconds=config.planes.burst_poll_seconds,
-            relaxed_poll_seconds=config.planes.relaxed_poll_seconds,
+        services.append(reporter)
+        if config.panel_down_alert.enabled:
+            # After the reporter, so each tick reads the probe it has just made.
+            services.append(build_panel_down_alert(config, reporter, logger=logger.getChild("panel_down")))
+            names.append("Panel-down alert")
+        runner = UtilityHubRunner(
+            services,
+            interval_seconds=min(intervals),
+            clock=clock,
+            logger=logger,
         )
-        services.append(sky_watch.SkyWatchController(panel, cfg, logger=logger.getChild("planes")))
-        names.append("Planes Overhead")
-        intervals.append(cfg.burst_poll_seconds)
-    if config.quakes.enabled:
-        cfg = quake_watch.QuakeWatchConfig(
-            radius_km=config.quakes.radius_km, min_magnitude=config.quakes.min_magnitude,
-        )
-        services.append(quake_watch.QuakeWatchController(panel, cfg, logger=logger.getChild("quakes")))
-        names.append("Quake Watch")
-        intervals.append(cfg.poll_seconds)
-    if config.game_mode.enabled:
-        cfg = game_mode.GameModeConfig(extra_games=config.game_mode.extra_games)
-        services.append(game_mode.GameModeController(panel, cfg, logger=logger.getChild("game")))
-        names.append("Game Mode")
-        intervals.append(cfg.poll_seconds)
-    if config.iss.enabled:
-        cfg = iss_watch.IssWatchConfig(
-            quiet_start_minute=config.quiet_start_minute, quiet_end_minute=config.quiet_end_minute,
-        )
-        services.append(iss_watch.IssWatchController(panel, cfg, logger=logger.getChild("iss")))
-        names.append("ISS Watch")
-        intervals.append(cfg.burst_poll_seconds)
-    if config.maintenance.enabled:
-        cfg = build_maintenance_config(config.maintenance)
-        services.append(panel_maintenance.MaintenanceController(
-            panel, cfg, logger=logger.getChild("maintenance")))
-        names.append("Panel Maintenance")
-        intervals.append(cfg.poll_seconds)
-    if config.notifications.enabled:
-        cfg = notify_mirror.NotifyMirrorConfig(
-            rules=config.notifications.rules, max_age_minutes=config.notifications.max_age_minutes,
-        )
-        services.append(notify_mirror.NotifyMirrorController(
-            panel, cfg, logger=logger.getChild("notifications")))
-        names.append("Notification Mirror")
-        intervals.append(cfg.poll_seconds)
-    reminder_controller = None
-    if config.reminders_enabled:
-        reminder_controller = desk_reminder.ReminderController(panel)
-        services.append(reminder_controller)
-        names.append("Desk Reminder")
-        intervals.append(desk_reminder.REFRESH_SECONDS)
-    if not services:
-        raise SystemExit("No Utility Hub services are enabled and configured")
-    # The sentinel ticks first, so each probe reads its state for that tick.
-    reporter = hub_status.HubStatusReporter(
-        panel, reminders_enabled=config.reminders_enabled, reminder=reminder_controller,
-        pc_offline=network_controller.pc_offline if network_controller is not None else None,
-    )
-    services.append(reporter)
-    if config.panel_down_alert.enabled:
-        # After the reporter, so each tick reads the probe it has just made.
-        services.append(build_panel_down_alert(config, reporter, logger=logger.getChild("panel_down")))
-        names.append("Panel-down alert")
-    runner = UtilityHubRunner(
-        services,
-        interval_seconds=min(intervals),
-        clock=clock,
-        logger=logger,
-    )
-    logger.info("Utility Hub started; active services: %s", ", ".join(names))
-    try:
-        runner.run_forever()
-    except KeyboardInterrupt:
-        logger.info("Utility Hub stopped")
+        logger.info("Utility Hub started; active services: %s", ", ".join(names))
+        try:
+            runner.run_forever(stop_event)
+        except KeyboardInterrupt:
+            logger.info("Utility Hub stopped")
+
+
+    finally:
+        panel.session.close()
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main(threading.Event()))

@@ -270,7 +270,7 @@ class ScriptBridgeRunTests(unittest.IsolatedAsyncioTestCase):
         with patch.object(app, "configure_logging", return_value=Mock()):
             with patch.object(app, "request_media_manager", manager):
                 with patch.object(app, "read_snapshot", read):
-                    with patch.object(app.asyncio, "sleep", stop_after_sample):
+                    with patch.object(app, "async_wait", lambda _event, delay: stop_after_sample(delay)):
                         with patch.object(app.requests, "put") as put:
                             with patch.object(app.requests, "delete") as delete:
                                 await app.run_script_bridge(
@@ -311,7 +311,7 @@ class ScriptBridgeRunTests(unittest.IsolatedAsyncioTestCase):
             with patch.object(app, "request_media_manager", manager):
                 with patch.object(app, "read_snapshot", read):
                     with patch.object(app.time, "monotonic", clock):
-                        with patch.object(app.asyncio, "sleep", advance):
+                        with patch.object(app, "async_wait", lambda _event, delay: advance(delay)):
                             with patch.object(app.requests, "put") as put:
                                 with patch.object(app.requests, "delete") as delete:
                                     await app.run_script_bridge(
@@ -354,7 +354,7 @@ class ScriptBridgeRunTests(unittest.IsolatedAsyncioTestCase):
         with patch.object(app, "configure_logging", return_value=Mock()):
             with patch.object(app, "request_media_manager", manager):
                 with patch.object(app, "read_snapshot", read):
-                    with patch.object(app.asyncio, "sleep", advance):
+                    with patch.object(app, "async_wait", lambda _event, delay: advance(delay)):
                         await app.run_script_bridge(
                             store,
                             stop_event=stop,
@@ -528,7 +528,7 @@ class ProductionBridgeStartupTests(unittest.IsolatedAsyncioTestCase):
                                 ) as installer:
                                     with patch.object(app, "request_media_manager", manager):
                                         with patch.object(app, "read_snapshot", read):
-                                            with patch.object(app.asyncio, "sleep", advance):
+                                            with patch.object(app, "async_wait", lambda _event, delay: advance(delay)):
                                                 with patch.object(
                                                     app.asyncio,
                                                     "to_thread",
@@ -590,7 +590,7 @@ class ProductionBridgeStartupTests(unittest.IsolatedAsyncioTestCase):
                                 with patch.object(app, "ensure_script_installed", install):
                                     with patch.object(app, "request_media_manager", manager):
                                         with patch.object(app, "read_snapshot", read):
-                                            with patch.object(app.asyncio, "sleep", advance):
+                                            with patch.object(app, "async_wait", lambda _event, delay: advance(delay)):
                                                 with patch.object(
                                                     app.asyncio,
                                                     "to_thread",
@@ -652,7 +652,7 @@ class ProductionBridgeStartupTests(unittest.IsolatedAsyncioTestCase):
                                     with patch.object(app.requests, "delete") as http_delete:
                                         with patch.object(app, "request_media_manager", manager):
                                             with patch.object(app, "read_snapshot", read):
-                                                with patch.object(app.asyncio, "sleep", no_wait):
+                                                with patch.object(app, "async_wait", lambda _event, delay: no_wait(delay)):
                                                     with patch.object(
                                                         app.asyncio,
                                                         "to_thread",

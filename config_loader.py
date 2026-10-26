@@ -192,6 +192,9 @@ def _semantics(document):
     if maintenance.get("window_start", "21:35") == maintenance.get("window_end", "23:00"):
         raise ConfigError("Invalid services.hub.options.maintenance (empty window)")
     validate_hotkeys(document["services"]["drift_link"]["options"])
+    pc = document["services"]["pc_stats"]["options"]
+    if 2 * (pc.get("interval_seconds", 5) + pc.get("request_timeout_seconds", 5)) >= 45:
+        raise ConfigError("Invalid services.pc_stats.options (sampling and timeout leave no keepalive retry headroom)")
 
 
 @dataclass(frozen=True)
@@ -293,3 +296,7 @@ def config_from_mapping(value: Any, *, source_path: Path | str,
 def load_config(path: Path | str | None = None, *, environ: Mapping[str, str] | None = None) -> CanonicalConfig:
     selected = default_config_path(environ) if path is None else Path(path)
     return config_from_mapping(read_json(selected), source_path=selected, environ=environ)
+
+
+# Public name used by the worker entry contract; CanonicalConfig remains compatible.
+DriftMatrixConfig = CanonicalConfig
