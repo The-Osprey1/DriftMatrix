@@ -43,6 +43,7 @@ _ROOT = str(Path(__file__).resolve().parent.parent)
 if _ROOT not in sys.path:
     sys.path.append(_ROOT)
 from visual_system import PEARL, RGB, draw_comet, render_rich_lane, scale_color  # noqa: E402
+import firmware_compat
 import panel_gate  # noqa: E402
 import threading
 from service_runtime import DriftMatrixConfig, run_owned, worker_adapter, wait, in_quiet_hours
@@ -484,7 +485,7 @@ def build_payload(snapshot: AQISnapshot, animated: bool = True) -> dict[str, Any
 
 
 def push_payload(session: requests.Session, base_url: str, payload: Mapping[str, Any], *, timeout: float = REQUEST_TIMEOUT_SECONDS) -> None:
-    body = dict(payload)
+    body = firmware_compat.prepare_payload(base_url, payload)
     with panel_gate.mutation(GATE_SOURCE, "push", APP_NAME, body=body) as gate:
         response = session.put(
             f"{base_url.rstrip('/')}{PUSH_PATH}",
@@ -540,6 +541,7 @@ def read_panel_health(session: requests.Session, base_url: str, *, timeout: floa
         return None
     if uptime < 0:
         return None
+    firmware_compat.observe_device(base_url, body)
     return PanelHealth(uptime_seconds=uptime, reset_reason=reason)
 
 

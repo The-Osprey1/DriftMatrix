@@ -9,6 +9,7 @@ from pathlib import Path
 import pytest
 from unittest.mock import MagicMock
 
+import firmware_compat
 import panel_gate
 import service_runtime
 from panel_client import PanelClient
@@ -68,6 +69,7 @@ def _panel_gate_isolation(_panel_gate_shared: Path, monkeypatch: pytest.MonkeyPa
     cost the suite most of a second; a test that reads it asks for
     ``panel_gate_dir``.
     """
+    firmware_compat._versions.clear()
     monkeypatch.setenv(panel_gate.DIR_ENV, str(_panel_gate_shared))
     monkeypatch.setenv(panel_gate.GAP_ENV, "0")
     monkeypatch.delenv(panel_gate.ENABLE_ENV, raising=False)

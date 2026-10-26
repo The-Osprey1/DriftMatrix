@@ -299,6 +299,21 @@ Edit the selected file with your panel IP and local preferences. The local `util
 ### 4. Deploying Apps to the Matrix
 Before a live change, capture and validate a rollback snapshot with `panel_snapshot.py`. A complete snapshot has a `manifest.json`; an incomplete capture is not a rollback set. Check the installed app version before choosing the rollback source.
 
+Firmware updates are separate from resident script swaps. AWTRIX NG 1.2.2 requires
+GIF/JPEG inline icons to use data URLs. Existing health probes now remember the
+firmware version per endpoint; transport boundaries add the MIME prefix for
+1.2.2 and later, while retaining bare base64 for 1.1.2. Renderers, bitmap draw
+commands, named icons, and existing data URLs are unchanged. Until a valid version
+has been observed, the legacy format is used. A later health probe detects a
+firmware rollback and restores the legacy encoding without restarting the sender.
+
+Before upgrading the clock, save its native settings/files backup as well as the
+snapshot, retain a verified firmware rollback image, and stop host workers. Use
+the official OTA image for the actual chip and preserve the filesystem. Restore
+audio volume deliberately: 1.2.2 drops the old volume and `soundEnabled` settings.
+Verify the device identity, version, settings, script errors and memory after boot,
+then resume workers. A successful upload does not establish physical LED acceptance.
+
 The following example applies **only when Moon v2.0 is installed** and you are preparing v2.1. The dry run reads panel state but performs no panel writes or reboots:
 
 ```bash
