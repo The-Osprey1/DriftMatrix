@@ -1,0 +1,46 @@
+{
+  "$schema": "./driftmatrix.schema.json",
+  "schema_version": 1,
+  "panel": {
+    "url": "http://192.0.2.10",
+    "timezone": "America/Los_Angeles",
+    "quiet_hours": {
+      "start": "21:30",
+      "end": "07:00"
+    }
+  },
+  "runtime": {
+    "data_dir": null,
+    "shutdown_timeout_seconds": 30,
+    "restart": {
+      "max_attempts": 5,
+      "window_seconds": 600
+    }
+  },
+  "services": {
+    "hub": {
+      "enabled": false,
+      "options": {}
+    },
+    "media": {
+      "enabled": false,
+      "options": {}
+    },
+    "pc_stats": {
+      "enabled": false,
+      "options": {}
+    },
+    "weather": {
+      "enabled": false,
+      "options": {}
+    },
+    "aqi": {
+      "enabled": false,
+      "options": {}
+    },
+    "drift_link": {
+      "enabled": false,
+      "options": {}
+    }
+  }
+}

@@ -270,6 +270,9 @@ python -m pip install -r requirements.txt
 ```
 
 ### 3. Configuration
+
+**Step 4A:** [Canonical configuration and offline migration](docs/configuration.md) provides `python -m driftmatrix validate` and `python -m driftmatrix migrate`. These tools create reviewable candidates without changing running senders. Existing services continue using the configuration described below until their worker adapters are introduced.
+
 The Hub reads `%LOCALAPPDATA%/AWTRIX/utility_hub.json` by default on Windows. For a new installation, copy the template there without overwriting an existing configuration:
 
 ```powershell

@@ -1,3 +1,7 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
 [project]
 name = "awtrix"
 version = "1.0.0"
@@ -23,6 +27,16 @@ dev = [
     "numpy>=1.26,<3",
     "astropy>=6,<8",
 ]
+
+[project.scripts]
+driftmatrix = "driftmatrix:main"
+
+[tool.setuptools]
+packages = ["driftmatrix_config"]
+py-modules = ["config_loader", "config_migration", "driftmatrix"]
+
+[tool.setuptools.package-data]
+driftmatrix_config = ["*.json"]
 
 [tool.pytest.ini_options]
 testpaths = ["."]
