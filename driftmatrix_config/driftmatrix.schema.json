@@ -778,6 +778,9 @@
         "script_path": {
           "type": "string",
           "minLength": 1
+        },
+        "allow_script_install": {
+          "type": "boolean"
         }
       }
     },

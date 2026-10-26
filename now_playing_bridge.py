@@ -222,6 +222,7 @@ def ensure_script_installed(
     source: str,
     session: Any = requests,
     timeout: float = 10.0,
+    *, allow_install: bool = True,
 ) -> bool:
     """Install changed Berry source and return whether a write was required."""
 
@@ -240,6 +241,8 @@ def ensure_script_installed(
         return False
     if current.status_code not in (200, 404):
         raise RuntimeError(f"Script inspection HTTP {current.status_code}: {current.text[:200]}")
+    if not allow_install:
+        raise RuntimeError("Resident media script differs or is missing; use guarded script_swap before starting this bridge")
 
     try:
         body = source.encode("utf-8")

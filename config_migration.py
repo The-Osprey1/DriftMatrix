@@ -84,6 +84,14 @@ def migrate(*, hub_path: Path | None = None, ecosystem_path: Path | None = None,
 
     if hub_path is not None:
         hub = read_json(hub_path, label="Hub input")
+        if isinstance(hub, dict) and "_readme" in hub:
+            notes = hub.pop("_readme")
+            if not (isinstance(notes, str) or isinstance(notes, list) and all(isinstance(line, str) for line in notes)):
+                problem("invalid_reserved_metadata", ("_readme",), [origin("hub", ("_readme",))],
+                        "Hub documentation metadata must be text or a list of text lines")
+            else:
+                warnings.append({"code": "reserved_metadata_omitted", "source": "hub", "field": "_readme",
+                                 "message": "Hub documentation notes are omitted from runtime configuration"})
         allowed = schema_document()["definitions"]["hubOptions"]["properties"]
         if not unknown(hub, {*allowed, "panel_url", "quiet_hours"}, "hub"):
             if "panel_url" in hub:

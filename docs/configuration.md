@@ -37,7 +37,7 @@ The required top-level fields are `schema_version`, `panel`, `runtime`, and `ser
 
 Hub options retain the existing scene sections, including calendars, focus, reminders, notifications, maintenance, and panel-down alerts. The former `panel_url` and `quiet_hours` become shared `panel` fields. The calendar timezone also moves to `panel.timezone`.
 
-Media options cover bridge port, poll/staleness intervals, and a script path. PC stats options cover sampling/request intervals, refresh delta, and confirmation count. Weather and AQI options cover coordinates, intervals, and static artwork selection; enabling either requires valid latitude and longitude. Drift-Link options retain matrix enablement, candidate device discovery, macro mappings, app rotation, and polling interval.
+Media options cover bridge port, poll/staleness intervals, a script path, and optional `allow_script_install`. Set the latter false for [guarded host adoption](host-adoption.md) so a missing or different resident script cannot be replaced automatically. PC stats options cover sampling/request intervals, refresh delta, and confirmation count. Weather and AQI options cover coordinates, intervals, and static artwork selection; enabling either requires valid latitude and longitude. Drift-Link options retain matrix enablement, candidate device discovery, macro mappings, app rotation, and polling interval.
 
 Unknown fields, string-valued enable flags, duplicate JSON keys, non-finite numbers, unsupported URL schemes, invalid hotkeys, and invalid field combinations are rejected. Windows UTF-8 BOM files are accepted. Panel URLs cannot contain credentials, queries, or fragments. Calendar URLs may retain private feed parameters, but they are not included in diagnostics.
 

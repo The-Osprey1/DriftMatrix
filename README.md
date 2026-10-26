@@ -271,6 +271,8 @@ python -m pip install -r requirements.txt
 
 ### 3. Configuration
 
+For an existing installation, use the [guarded host adoption checklist](docs/host-adoption.md) before replacing legacy sender tasks with the supervisor. It covers snapshots, migration review, staged activation, verification-only media startup, rollback, and physical acceptance.
+
 **Step 4A:** [Canonical configuration and offline migration](docs/configuration.md) provides `python -m driftmatrix validate` and `python -m driftmatrix migrate`. These tools create reviewable candidates without changing running senders. **Step 4B:** [Worker adapters and cooperative shutdown](docs/workers.md) adds canonical configuration APIs for all six services and ownership locks shared with their updated standalone entry points. **Step 4C:** [Process supervision](docs/supervisor.md) provides `driftmatrix run`, `status`, and `stop`, with bounded restarts and shutdown escalation. The standalone commands below retain their existing configuration selection; starting the supervisor requires an explicitly selected canonical configuration and service enable flags.
 
 The Hub reads `%LOCALAPPDATA%/AWTRIX/utility_hub.json` by default on Windows. For a new installation, copy the template there without overwriting an existing configuration:

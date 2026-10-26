@@ -49,6 +49,31 @@ def test_example_migration_preserves_hub_semantics_without_enabling_workers(inpu
     assert not (tmp_path / "candidate.json").exists()
 
 
+@pytest.mark.parametrize("notes", ["Private documentation", ["Private documentation", "Second line"]])
+def test_legacy_hub_documentation_is_reported_and_omitted(inputs, tmp_path, notes):
+    document = loader.read_json(inputs[0])
+    document["_readme"] = notes
+    write(inputs[0], document)
+    before = inputs[0].read_bytes()
+    result = preview(inputs, tmp_path)
+    assert result.candidate is not None
+    assert "_readme" not in result.candidate["services"]["hub"]["options"]
+    assert any(item["code"] == "reserved_metadata_omitted" and item.get("field") == "_readme"
+               for item in result.report["warnings"])
+    assert "Private documentation" not in json.dumps(result.report)
+    assert inputs[0].read_bytes() == before
+
+
+@pytest.mark.parametrize("notes", [True, {"enabled": True}, ["text", 3]])
+def test_reserved_hub_notes_cannot_hide_runtime_settings(inputs, tmp_path, notes):
+    document = loader.read_json(inputs[0])
+    document["_readme"] = notes
+    write(inputs[0], document)
+    result = preview(inputs, tmp_path)
+    assert result.candidate is None
+    assert any(item["code"] == "invalid_reserved_metadata" for item in result.report["conflicts"])
+
+
 def test_every_candidate_leaf_has_provenance_and_shared_endpoint_has_both_sources(inputs, tmp_path):
     result = preview(inputs, tmp_path)
     fields = {item["field"] for item in result.report["provenance"]}

@@ -1037,6 +1037,7 @@ def refresh_state_url(
     install: Any = None,
     panel_url: str | None = None,
     bridge_port: int | None = None,
+    allow_script_install: bool = True,
 ) -> str:
     """Reinstall the panel script if this PC's address has moved.
 
@@ -1064,12 +1065,13 @@ def refresh_state_url(
         return installed_url
 
     logger.warning(
-        "This PC's address changed; the panel was polling %s. Reinstalling for %s",
+        "This PC's address changed; the panel was polling %s. Checking renderer for %s",
         installed_url,
         current_url,
     )
     try:
-        installer(AWTRIX if panel_url is None else panel_url, APP_NAME, install_source(template, current_url))
+        installer(AWTRIX if panel_url is None else panel_url, APP_NAME, install_source(template, current_url),
+                  **({"allow_install": False} if not allow_script_install else {}))
     except Exception as error:  # noqa: BLE001
         # Keep the old URL recorded so the next check tries again rather than
         # believing it has already fixed this.
@@ -1084,6 +1086,7 @@ async def run_script_bridge(
     poll_seconds: float = MEDIA_POLL_SECONDS,
     *, panel_url: str | None = None, bridge_port: int | None = None,
     stale_after_seconds: float | None = None, script_path: Path | None = None,
+    allow_script_install: bool = True,
 ) -> None:
     """Serve media state while AWTRIX renders the page locally in Berry.
 
@@ -1170,6 +1173,7 @@ async def run_script_bridge(
                         endpoint,
                         APP_NAME,
                         source,
+                        **({"allow_install": False} if not allow_script_install else {}),
                     )
                 except RuntimeError as error:
                     install_failures += 1
@@ -1209,7 +1213,8 @@ async def run_script_bridge(
                 next_lan_check = now + LAN_RECHECK_SECONDS
                 installed_url = await asyncio.to_thread(
                     refresh_state_url, panel_ip, installed_url, template, logger,
-                    **({"panel_url": endpoint, "bridge_port": port} if configured else {})
+                    **({"panel_url": endpoint, "bridge_port": port} if configured else {}),
+                    **({"allow_script_install": False} if not allow_script_install else {}),
                 )
 
             if manager is None and now < next_manager_retry:
@@ -1627,6 +1632,7 @@ def run_worker(config: DriftMatrixConfig, stop_event: threading.Event) -> int:
         poll_seconds=options.get("poll_seconds", MEDIA_POLL_SECONDS),
         stale_after_seconds=options.get("stale_after_seconds", STATE_STALE_SECONDS),
         script_path=options.get("script_path"),
+        **({"allow_script_install": False} if not options.get("allow_script_install", True) else {}),
     ))
     return 0
 

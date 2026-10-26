@@ -330,7 +330,7 @@ def capture_snapshot(
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--awtrix", default=AWTRIX)
+    parser.add_argument("--awtrix", "--panel", dest="awtrix", default=AWTRIX)
     parser.add_argument("--output-root", type=Path, default=None)
     parser.add_argument(
         "--purpose",
