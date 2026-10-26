@@ -1,4 +1,4 @@
-"""Offline DriftMatrix configuration commands (Step 4A)."""
+"""DriftMatrix configuration and host-service lifecycle commands."""
 from __future__ import annotations
 
 import argparse
@@ -21,6 +21,11 @@ def main(argv=None) -> int:
     migration.add_argument("--legacy-working-dir", type=Path, help="anchor for relative legacy calendar paths")
     migration.add_argument("--output", type=Path, help="new candidate file; existing files are never overwritten")
     migration.add_argument("--report", type=Path, help="optional new file for the redacted provenance report")
+    for name, help_text in (("run", "run the foreground process supervisor"),
+                            ("status", "inspect local supervisor and process status"),
+                            ("stop", "request cooperative supervisor shutdown")):
+        command = commands.add_parser(name, help=help_text)
+        command.add_argument("--config", type=Path, default=None)
     args = parser.parse_args(argv)
     candidate_written = False
     try:
@@ -30,6 +35,14 @@ def main(argv=None) -> int:
                       "config_hash": config.config_hash,
                       "services": {name: service.enabled for name, service in config.services.items()}}
             print(json.dumps(result, indent=2))
+            return 0
+        if args.command in {"run", "status", "stop"}:
+            # Offline commands must not import process or worker runtime modules.
+            from supervisor import Supervisor, request_stop, status
+            config = load_config(args.config)
+            if args.command == "run":
+                return Supervisor(config).run()
+            print(json.dumps(status(config) if args.command == "status" else request_stop(config), indent=2))
             return 0
         inputs = (args.from_hub, args.from_ecosystem, args.from_senders)
         destinations = [path for path in (args.output, args.report) if path is not None]
@@ -51,6 +64,9 @@ def main(argv=None) -> int:
         return 2 if result.candidate is None else 0
     except ConfigError as error:
         print(json.dumps({"status": "error", "message": str(error), "candidate_written": candidate_written}))
+        return 2
+    except OSError as error:
+        print(json.dumps({"status": "error", "message": type(error).__name__}))
         return 2
 
 

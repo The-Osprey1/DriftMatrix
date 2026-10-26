@@ -38,7 +38,7 @@ Adapters translate canonical options into the services' existing typed configura
 
 Data paths are scoped with a context variable for status, local commands, logging, and panel-gate journals. Drift-Link propagates that context into its listener and event-bus callback threads. The scope is restored on return or failure. Existing explicit panel-gate overrides continue to take precedence.
 
-The process boundary remains one worker per process. Adapters are intended for the Phase 4C supervisor or a controlled embedding; they do not create or supervise other service processes. The installed `driftmatrix` command still provides only offline `validate` and `migrate`. The worker modules currently run from the repository with its normal companion dependencies.
+The process boundary remains one worker per process. Adapters run under the [Phase 4C supervisor](supervisor.md) or a controlled embedding; they do not create or supervise other service processes. The installed package now includes the worker runtime and resources, and the CLI provides `run`, `status`, and `stop` alongside offline `validate` and `migrate`.
 
 ## Stop handling and results
 
@@ -53,4 +53,4 @@ Idle and retry waits wake when the event is set. An in-flight network request, c
 | `3` | Ownership could not be acquired |
 | Exception | Startup or runtime failure for the caller/supervisor to record |
 
-Existing standalone script names, arguments, and configuration selection remain available. Running those scripts uses the new ownership and stop handling, but does not automatically adopt `driftmatrix.json` or replace scheduled tasks. The supervisor's `run`, `status`, `stop`, restart policy, and shared logging policy remain Phase 4C work. Deployment and physical-panel acceptance remain separate steps.
+Existing standalone script names, arguments, and configuration selection remain available. Running those scripts uses the new ownership and stop handling, but does not automatically adopt `driftmatrix.json` or replace scheduled tasks. The supervisor's lifecycle, restart policy, and shutdown deadline are described in [Phase 4C](supervisor.md). Deployment and physical-panel acceptance remain separate steps.

@@ -111,4 +111,4 @@ All original inputs remain unchanged. The commands do not replace live configura
 
 ## Next phases
 
-Step 4B provides worker adapters, cooperative shutdown, and the per-service ownership primitive shared with updated standalone entry points. Step 4C adds process supervision, supervisor ownership, restart management, and `run`/`status`/`stop`. Those runtime commands are intentionally absent from the offline CLI. Live acceptance and rollback remain separate from offline schema and migration checks.
+Step 4B provides worker adapters, cooperative shutdown, and the per-service ownership primitive shared with updated standalone entry points. [Step 4C](supervisor.md) now provides process supervision, supervisor ownership, bounded restarts, shutdown escalation, and `run`/`status`/`stop`. Offline `validate` and `migrate` retain their side-effect boundary. Physical adoption, acceptance, and rollback remain separate deployment steps.
