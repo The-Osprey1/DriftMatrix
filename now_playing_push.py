@@ -51,6 +51,8 @@ from now_playing_bridge import (
     resolve_lan_ip,
 )
 import panel_gate
+from service_runtime import DriftMatrixConfig, run_owned, worker_adapter, async_wait
+from focus_control import default_data_dir
 
 try:
     from PIL import Image
@@ -1020,9 +1022,9 @@ def _stop_requested(stop_event: Any | None) -> bool:
     return bool(stop_event is not None and stop_event.is_set())
 
 
-def state_url_for(lan_ip: str) -> str:
+def state_url_for(lan_ip: str, port: int | None = None) -> str:
     """The URL the panel polls for media state."""
-    return f"http://{lan_ip}:{STATE_SERVER_PORT}{STATE_PATH}"
+    return f"http://{lan_ip}:{STATE_SERVER_PORT if port is None else port}{STATE_PATH}"
 
 
 def refresh_state_url(
@@ -1033,6 +1035,8 @@ def refresh_state_url(
     *,
     resolve: Any = resolve_lan_ip,
     install: Any = None,
+    panel_url: str | None = None,
+    bridge_port: int | None = None,
 ) -> str:
     """Reinstall the panel script if this PC's address has moved.
 
@@ -1052,7 +1056,7 @@ def refresh_state_url(
     """
     installer = install or ensure_script_installed
     try:
-        current_url = state_url_for(resolve(panel_ip))
+        current_url = state_url_for(resolve(panel_ip), bridge_port)
     except (OSError, RuntimeError) as error:
         logger.warning("Could not re-check this PC's LAN address: %s", type(error).__name__)
         return installed_url
@@ -1065,7 +1069,7 @@ def refresh_state_url(
         current_url,
     )
     try:
-        installer(AWTRIX, APP_NAME, install_source(template, current_url))
+        installer(AWTRIX if panel_url is None else panel_url, APP_NAME, install_source(template, current_url))
     except Exception as error:  # noqa: BLE001
         # Keep the old URL recorded so the next check tries again rather than
         # believing it has already fixed this.
@@ -1078,6 +1082,8 @@ async def run_script_bridge(
     store: BridgeStateStore | None = None,
     stop_event: Any | None = None,
     poll_seconds: float = MEDIA_POLL_SECONDS,
+    *, panel_url: str | None = None, bridge_port: int | None = None,
+    stale_after_seconds: float | None = None, script_path: Path | None = None,
 ) -> None:
     """Serve media state while AWTRIX renders the page locally in Berry.
 
@@ -1086,9 +1092,13 @@ async def run_script_bridge(
     installs the rendered Berry source before polling starts.
     """
 
+    configured = panel_url is not None or bridge_port is not None
+    endpoint = AWTRIX if panel_url is None else panel_url
+    port = STATE_SERVER_PORT if bridge_port is None else bridge_port
+    template_path = SCRIPT_TEMPLATE_PATH if script_path is None else Path(script_path)
     logger = configure_logging()
     owns_store = store is None
-    state_store = store or BridgeStateStore(stale_after=STATE_STALE_SECONDS)
+    state_store = store or BridgeStateStore(stale_after=STATE_STALE_SECONDS if stale_after_seconds is None else stale_after_seconds)
     server: Any | None = None
     server_thread: threading.Thread | None = None
     # Kept for the address re-check in the polling loop below. The URL handed
@@ -1100,98 +1110,95 @@ async def run_script_bridge(
     template: str | None = None
     next_lan_check = 0.0
 
-    if owns_store:
-        panel_host = urlsplit(AWTRIX).hostname
-        if not panel_host:
-            raise RuntimeError(f"Invalid AWTRIX URL: {AWTRIX}")
-        try:
-            template = SCRIPT_TEMPLATE_PATH.read_text(encoding="utf-8")
-        except OSError as error:
-            raise RuntimeError(f"Could not read {SCRIPT_TEMPLATE_PATH.name}: {error}") from error
-
-        setup_failures = 0
-        while not _stop_requested(stop_event):
-            try:
-                panel_ip = socket.gethostbyname(panel_host)
-                lan_ip = resolve_lan_ip(panel_ip)
-                server = make_server("0.0.0.0", STATE_SERVER_PORT, state_store, panel_ip)
-            except (OSError, RuntimeError) as error:
-                setup_failures += 1
-                if should_log_failure(setup_failures):
-                    logger.warning(
-                        "State bridge waiting for the LAN: %s (%d attempts)",
-                        error,
-                        setup_failures,
-                    )
-                await asyncio.sleep(network_retry_delay(setup_failures))
-                continue
-            break
-        if server is None:
-            return
-        server_thread = threading.Thread(
-            target=server.serve_forever,
-            name="awtrix-now-playing-state",
-            daemon=True,
-        )
-        server_thread.start()
-        state_url = state_url_for(lan_ip)
-        installed_url = state_url
-        # One full interval from now, not immediately: the address was just
-        # resolved to build this URL, so re-checking on the first pass through
-        # the loop is pure duplicate work.
-        next_lan_check = time.monotonic() + LAN_RECHECK_SECONDS
-        source = install_source(template, state_url)
-        install_failures = 0
-        removed_legacy = False
-        changed = False
-        while not _stop_requested(stop_event):
-            try:
-                if not removed_legacy:
-                    removed_legacy = await asyncio.to_thread(
-                        remove_legacy_pushed_app,
-                        AWTRIX,
-                        APP_NAME,
-                    )
-                    if removed_legacy:
-                        logger.info("Removed the legacy pushed renderer; preserved its app-loop slot")
-                changed = await asyncio.to_thread(
-                    ensure_script_installed,
-                    AWTRIX,
-                    APP_NAME,
-                    source,
-                )
-            except RuntimeError as error:
-                install_failures += 1
-                if should_log_failure(install_failures):
-                    logger.warning(
-                        "Device renderer setup unavailable: %s (%d attempts)",
-                        error,
-                        install_failures,
-                    )
-                await asyncio.sleep(network_retry_delay(install_failures))
-                continue
-            break
-        if _stop_requested(stop_event):
-            server.shutdown()
-            server.server_close()
-            server_thread.join(timeout=2.0)
-            return
-        logger.info(
-            "Device renderer %s; state bridge listening at %s",
-            "installed" if changed else "already current",
-            state_url,
-        )
-
-    logger.info("Starting Windows media state bridge")
-    manager: Any | None = None
-    idle_since: float | None = None
-    media_error_since: float | None = None
-    next_manager_retry = 0.0
-    last_semantic: tuple[bool, str, str, int] = (False, "", "", -1)
-    last_identity = ""
-    revision = state_store.snapshot().revision
-
     try:
+        if owns_store:
+            panel_host = urlsplit(endpoint).hostname
+            if not panel_host:
+                raise RuntimeError(f"Invalid AWTRIX URL: {endpoint}")
+            try:
+                template = template_path.read_text(encoding="utf-8")
+            except OSError as error:
+                raise RuntimeError(f"Could not read {template_path.name}: {error}") from error
+
+            setup_failures = 0
+            while not _stop_requested(stop_event):
+                try:
+                    panel_ip = socket.gethostbyname(panel_host)
+                    lan_ip = resolve_lan_ip(panel_ip)
+                    server = make_server("0.0.0.0", port, state_store, panel_ip)
+                except (OSError, RuntimeError) as error:
+                    setup_failures += 1
+                    if should_log_failure(setup_failures):
+                        logger.warning(
+                            "State bridge waiting for the LAN: %s (%d attempts)",
+                            error,
+                            setup_failures,
+                        )
+                    await async_wait(stop_event, network_retry_delay(setup_failures))
+                    continue
+                break
+            if server is None:
+                return
+            server_thread = threading.Thread(
+                target=server.serve_forever,
+                name="awtrix-now-playing-state",
+                daemon=True,
+            )
+            server_thread.start()
+            state_url = state_url_for(lan_ip, port)
+            installed_url = state_url
+            # One full interval from now, not immediately: the address was just
+            # resolved to build this URL, so re-checking on the first pass through
+            # the loop is pure duplicate work.
+            next_lan_check = time.monotonic() + LAN_RECHECK_SECONDS
+            source = install_source(template, state_url)
+            install_failures = 0
+            removed_legacy = False
+            changed = False
+            while not _stop_requested(stop_event):
+                try:
+                    if not removed_legacy:
+                        removed_legacy = await asyncio.to_thread(
+                            remove_legacy_pushed_app,
+                            endpoint,
+                            APP_NAME,
+                        )
+                        if removed_legacy:
+                            logger.info("Removed the legacy pushed renderer; preserved its app-loop slot")
+                    changed = await asyncio.to_thread(
+                        ensure_script_installed,
+                        endpoint,
+                        APP_NAME,
+                        source,
+                    )
+                except RuntimeError as error:
+                    install_failures += 1
+                    if should_log_failure(install_failures):
+                        logger.warning(
+                            "Device renderer setup unavailable: %s (%d attempts)",
+                            error,
+                            install_failures,
+                        )
+                    await async_wait(stop_event, network_retry_delay(install_failures))
+                    continue
+                break
+            if _stop_requested(stop_event):
+                return
+            logger.info(
+                "Device renderer %s; state bridge listening at %s",
+                "installed" if changed else "already current",
+                state_url,
+            )
+
+        logger.info("Starting Windows media state bridge")
+        manager: Any | None = None
+        idle_since: float | None = None
+        media_error_since: float | None = None
+        next_manager_retry = 0.0
+        last_semantic: tuple[bool, str, str, int] = (False, "", "", -1)
+        last_identity = ""
+        revision = state_store.snapshot().revision
+
         while not _stop_requested(stop_event):
             now = time.monotonic()
             snapshot: MediaSnapshot | None = None
@@ -1201,7 +1208,8 @@ async def run_script_bridge(
             if owns_store and installed_url and template and now >= next_lan_check:
                 next_lan_check = now + LAN_RECHECK_SECONDS
                 installed_url = await asyncio.to_thread(
-                    refresh_state_url, panel_ip, installed_url, template, logger
+                    refresh_state_url, panel_ip, installed_url, template, logger,
+                    **({"panel_url": endpoint, "bridge_port": port} if configured else {})
                 )
 
             if manager is None and now < next_manager_retry:
@@ -1260,18 +1268,19 @@ async def run_script_bridge(
                     state_store.update(BridgeState(revision=revision))
                     logger.info("Playback stopped; device renderer will leave rotation")
 
-            await asyncio.sleep(max(0.01, float(poll_seconds)))
+            await async_wait(stop_event, max(0.01, float(poll_seconds)))
     finally:
         state_store.clear()
         if server is not None:
-            await asyncio.to_thread(server.shutdown)
+            if server_thread is not None and server_thread.ident is not None:
+                await asyncio.to_thread(server.shutdown)
             server.server_close()
-        if server_thread is not None:
-            server_thread.join(timeout=2.0)
+        if server_thread is not None and server_thread.ident is not None:
+            server_thread.join()
         logger.info("Windows media state bridge stopped")
 
 
-async def run() -> None:
+async def run(stop_event=None) -> None:
     logger = configure_logging()
     logger.info("Starting Now Playing sender for %s", PUSH_URL)
 
@@ -1308,7 +1317,7 @@ async def run() -> None:
     activation_failures = 0
     safe_mode = False
 
-    while True:
+    while not _stop_requested(stop_event):
         now = time.monotonic()
 
         if now >= next_media_poll:
@@ -1408,7 +1417,7 @@ async def run() -> None:
             # remove it once the pause/stop is confirmed.
             if paused:
                 progress_sweep.clear()
-                await asyncio.sleep(0.05)
+                await async_wait(stop_event, 0.05)
                 continue
 
             desired_key = (
@@ -1603,23 +1612,35 @@ async def run() -> None:
                             activation_failures,
                         )
 
-        await asyncio.sleep(0.05)
+        await async_wait(stop_event, 0.05)
 
 
-def main() -> None:
+@worker_adapter("media")
+def run_worker(config: DriftMatrixConfig, stop_event: threading.Event) -> int:
+    if MediaManager is None:
+        logging.getLogger("driftmatrix.worker").error("Windows media support unavailable")
+        return 2
+    options = config.services["media"].options
+    asyncio.run(run_script_bridge(
+        stop_event=stop_event, panel_url=config.panel.url,
+        bridge_port=options.get("bridge_port", STATE_SERVER_PORT),
+        poll_seconds=options.get("poll_seconds", MEDIA_POLL_SECONDS),
+        stale_after_seconds=options.get("stale_after_seconds", STATE_STALE_SECONDS),
+        script_path=options.get("script_path"),
+    ))
+    return 0
+
+
+def main() -> int:
     if MediaManager is None or (not USE_DEVICE_SCRIPT_RENDERER and Image is None):
         message = f"Missing Windows media dependency. Run: {WINRT_INSTALL_COMMAND}"
         configure_logging().error(message)
         raise SystemExit(message)
-    try:
-        asyncio.run(run_script_bridge() if USE_DEVICE_SCRIPT_RENDERER else run())
-    except KeyboardInterrupt:
-        logger = configure_logging()
-        if USE_DEVICE_SCRIPT_RENDERER:
-            logger.info("Stopped; the device renderer will hide when state goes stale")
-        else:
-            logger.info("Stopped; the panel app will expire within 45 seconds")
+    stop_event = threading.Event()
+    return run_owned("media", AWTRIX, default_data_dir(), stop_event,
+                     lambda: asyncio.run(run_script_bridge(stop_event=stop_event)
+                                         if USE_DEVICE_SCRIPT_RENDERER else run(stop_event)))
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())

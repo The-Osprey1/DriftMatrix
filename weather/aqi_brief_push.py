@@ -44,6 +44,9 @@ if _ROOT not in sys.path:
     sys.path.append(_ROOT)
 from visual_system import PEARL, RGB, draw_comet, render_rich_lane, scale_color  # noqa: E402
 import panel_gate  # noqa: E402
+import threading
+from service_runtime import DriftMatrixConfig, run_owned, worker_adapter, wait, in_quiet_hours
+from focus_control import default_data_dir
 
 try:
     from .aqi_brief_preview import (
@@ -307,11 +310,12 @@ def fetch_air_quality(
     latitude: float = LATITUDE,
     longitude: float = LONGITUDE,
     now: datetime | None = None,
+    *, timeout: float = REQUEST_TIMEOUT_SECONDS,
 ) -> AQISnapshot:
     response = session.get(
         OPEN_METEO_URL,
         params=request_params(latitude, longitude),
-        timeout=REQUEST_TIMEOUT_SECONDS,
+        timeout=timeout,
     )
     response.raise_for_status()
     payload = response.json()
@@ -479,50 +483,50 @@ def build_payload(snapshot: AQISnapshot, animated: bool = True) -> dict[str, Any
     return payload
 
 
-def push_payload(session: requests.Session, base_url: str, payload: Mapping[str, Any]) -> None:
+def push_payload(session: requests.Session, base_url: str, payload: Mapping[str, Any], *, timeout: float = REQUEST_TIMEOUT_SECONDS) -> None:
     body = dict(payload)
     with panel_gate.mutation(GATE_SOURCE, "push", APP_NAME, body=body) as gate:
         response = session.put(
             f"{base_url.rstrip('/')}{PUSH_PATH}",
             json=body,
-            timeout=REQUEST_TIMEOUT_SECONDS,
+            timeout=timeout,
         )
         gate.observe(response)
     if not 200 <= response.status_code < 300:
         raise RuntimeError(f"AWTRIX HTTP {response.status_code}: {response.text[:200]}")
 
 
-def delete_app(session: requests.Session, base_url: str) -> None:
+def delete_app(session: requests.Session, base_url: str, *, timeout: float = REQUEST_TIMEOUT_SECONDS) -> None:
     """Remove the AQI page when its information is not actionable."""
 
     with panel_gate.mutation(GATE_SOURCE, "delete", APP_NAME) as gate:
         response = session.delete(
             f"{base_url.rstrip('/')}{DELETE_PATH}",
-            timeout=REQUEST_TIMEOUT_SECONDS,
+            timeout=timeout,
         )
         gate.observe(response)
     if not 200 <= response.status_code < 300:
         raise RuntimeError(f"AWTRIX HTTP {response.status_code}: {response.text[:200]}")
 
 
-def activate_app(session: requests.Session, base_url: str) -> None:
+def activate_app(session: requests.Session, base_url: str, *, timeout: float = REQUEST_TIMEOUT_SECONDS) -> None:
     body = {"name": APP_NAME, "fast": False}
     with panel_gate.mutation(GATE_SOURCE, "activate", APP_NAME, body=body) as gate:
         response = session.put(
             f"{base_url.rstrip('/')}/api/v1/apps/active",
             json=body,
-            timeout=REQUEST_TIMEOUT_SECONDS,
+            timeout=timeout,
         )
         gate.observe(response)
     if not 200 <= response.status_code < 300:
         raise RuntimeError(f"AWTRIX HTTP {response.status_code}: {response.text[:200]}")
 
 
-def read_panel_health(session: requests.Session, base_url: str) -> PanelHealth | None:
+def read_panel_health(session: requests.Session, base_url: str, *, timeout: float = REQUEST_TIMEOUT_SECONDS) -> PanelHealth | None:
     try:
         response = session.get(
             f"{base_url.rstrip('/')}{DEVICE_PATH}",
-            timeout=REQUEST_TIMEOUT_SECONDS,
+            timeout=timeout,
         )
     except requests.RequestException:
         return None
@@ -586,123 +590,149 @@ def run(
     dry_run: bool = False,
     static_only: bool = False,
     preview_path: Path | None = None,
+    *, stop_event=None, refresh_seconds=None, request_timeout_seconds=None,
+    quiet_hours=None, timezone_name=None,
 ) -> None:
+    refresh = REFRESH_SECONDS if refresh_seconds is None else float(refresh_seconds)
+    def http(function, *args):
+        return function(*args, **({"timeout": request_timeout_seconds} if request_timeout_seconds is not None else {}))
     session = requests.Session()
-    session.headers.update({"User-Agent": "AWTRIX-AQIBrief/1.0 (Open-Meteo/CAMS)"})
-    api_failures = 0
-    panel_failures = 0
-    safe_mode = bool(static_only)
-    previous_health: PanelHealth | None = None
-    animated_push_succeeded = False
-    remote_visible: bool | None = None
-    previous_aqi: int | None = None
-    activation_pending = False
-    print(f"AQI Brief -> {awtrix.rstrip('/')}{PUSH_PATH} every {REFRESH_SECONDS}s")
-    print("Air-quality data: Open-Meteo / CAMS ENSEMBLE")
+    try:
+        session.headers.update({"User-Agent": "AWTRIX-AQIBrief/1.0 (Open-Meteo/CAMS)"})
+        api_failures = 0
+        panel_failures = 0
+        safe_mode = bool(static_only)
+        previous_health: PanelHealth | None = None
+        animated_push_succeeded = False
+        remote_visible: bool | None = None
+        previous_aqi: int | None = None
+        activation_pending = False
+        print(f"AQI Brief -> {awtrix.rstrip('/')}{PUSH_PATH} every {refresh}s")
+        print("Air-quality data: Open-Meteo / CAMS ENSEMBLE")
 
-    while True:
-        try:
-            snapshot = fetch_air_quality(session, latitude, longitude)
-            api_failures = 0
-        except (requests.RequestException, ValueError, OSError) as error:
-            api_failures += 1
-            if api_failures in (1, 3) or api_failures % 12 == 0:
-                print(f"AQI data unavailable ({api_failures}): {error}")
-            if once:
-                raise
-            time.sleep(min(REFRESH_SECONDS, 30 * (2 ** min(api_failures - 1, 4))))
-            continue
+        while stop_event is None or not stop_event.is_set():
+            try:
+                snapshot = http(fetch_air_quality, session, latitude, longitude)
+                api_failures = 0
+            except (requests.RequestException, ValueError, OSError) as error:
+                api_failures += 1
+                if api_failures in (1, 3) or api_failures % 12 == 0:
+                    print(f"AQI data unavailable ({api_failures}): {error}")
+                if once:
+                    raise
+                wait(stop_event, min(refresh, 30 * (2 ** min(api_failures - 1, 4))), sleep=time.sleep)
+                continue
 
-        local_now = datetime.now(snapshot.observed_at.tzinfo)
-        if (
-            previous_aqi is not None
-            and previous_aqi < AQI_UNHEALTHY_AT <= snapshot.us_aqi
-            and not is_quiet_time(local_now)
-        ):
-            activation_pending = True
-        if snapshot.us_aqi < AQI_UNHEALTHY_AT:
-            activation_pending = False
+            if stop_event is not None and stop_event.is_set():
+                return
+            from zoneinfo import ZoneInfo
+            local_now = datetime.now(ZoneInfo(timezone_name) if timezone_name else snapshot.observed_at.tzinfo)
+            if (
+                previous_aqi is not None
+                and previous_aqi < AQI_UNHEALTHY_AT <= snapshot.us_aqi
+                and not (is_quiet_time(local_now) if quiet_hours is None else in_quiet_hours(local_now, quiet_hours))
+            ):
+                activation_pending = True
+            if snapshot.us_aqi < AQI_UNHEALTHY_AT:
+                activation_pending = False
 
-        relevant = is_relevant(snapshot, currently_visible=remote_visible is True)
-        if not relevant:
-            if dry_run:
-                print(f"Dry run: hidden ({relevance_reason(snapshot)})")
-                remote_visible = False
-                panel_failures = 0
-            elif remote_visible is not False:
-                try:
-                    delete_app(session, awtrix)
+            relevant = is_relevant(snapshot, currently_visible=remote_visible is True)
+            if not relevant:
+                if dry_run:
+                    print(f"Dry run: hidden ({relevance_reason(snapshot)})")
                     remote_visible = False
                     panel_failures = 0
-                    print(f"Hidden: {relevance_reason(snapshot)}")
+                elif remote_visible is not False:
+                    try:
+                        http(delete_app, session, awtrix)
+                        remote_visible = False
+                        panel_failures = 0
+                        print(f"Hidden: {relevance_reason(snapshot)}")
+                    except (requests.RequestException, RuntimeError, OSError) as error:
+                        panel_failures += 1
+                        if panel_failures in (1, 3) or panel_failures % 12 == 0:
+                            print(f"Panel unavailable ({panel_failures}): {error}")
+                        if once:
+                            raise
+                        wait(stop_event, min(refresh, 15 * (2 ** min(panel_failures - 1, 5))), sleep=time.sleep)
+                        continue
+                previous_aqi = snapshot.us_aqi
+                if once:
+                    return
+                wait(stop_event, refresh, sleep=time.sleep)
+                continue
+
+            if stop_event is not None and stop_event.is_set():
+                return
+
+            if not dry_run:
+                health = http(read_panel_health, session, awtrix)
+                if animated_push_succeeded and unplanned_reboot(previous_health, health):
+                    safe_mode = True
+                    print("Panel reboot detected after animated AQI; using static icon safety mode")
+                if health is not None:
+                    previous_health = health
+
+            payload = build_payload(snapshot, animated=not safe_mode)
+            if preview_path is not None:
+                saved = save_preview(snapshot, preview_path)
+                print(f"Preview: {saved}")
+
+            if dry_run:
+                body_size = len(json.dumps(payload, separators=(",", ":")).encode("utf-8"))
+                print(
+                    f"Dry run: {display_text(snapshot.us_aqi)}; "
+                    f"PM2.5={snapshot.pm2_5:g}; payload={body_size} bytes"
+                )
+                panel_failures = 0
+            else:
+                try:
+                    if stop_event is not None and stop_event.is_set():
+                        return
+                    http(push_payload, session, awtrix, payload)
+                    remote_visible = True
+                    animated_push_succeeded = animated_push_succeeded or not safe_mode
+                    panel_failures = 0
+                    print(
+                        f"Updated: {display_text(snapshot.us_aqi)}; PM2.5={snapshot.pm2_5:g}"
+                        f"{' [static safety]' if safe_mode else ''}"
+                    )
+                    if activation_pending:
+                        try:
+                            http(activate_app, session, awtrix)
+                            activation_pending = False
+                            print("Activated: AQI crossed into Unhealthy")
+                        except (requests.RequestException, RuntimeError, OSError) as error:
+                            print(f"AQI activation deferred: {error}")
                 except (requests.RequestException, RuntimeError, OSError) as error:
                     panel_failures += 1
-                    if panel_failures in (1, 3) or panel_failures % 12 == 0:
+                    if panel_failures >= SAFE_MODE_FAILURES and not safe_mode:
+                        safe_mode = True
+                        print("Repeated panel failures; latching static AQI icon safety mode")
+                    if panel_failures in (1, 3, SAFE_MODE_FAILURES) or panel_failures % 12 == 0:
                         print(f"Panel unavailable ({panel_failures}): {error}")
                     if once:
                         raise
-                    time.sleep(min(REFRESH_SECONDS, 15 * (2 ** min(panel_failures - 1, 5))))
+                    wait(stop_event, min(refresh, 15 * (2 ** min(panel_failures - 1, 5))), sleep=time.sleep)
                     continue
+
             previous_aqi = snapshot.us_aqi
+
             if once:
                 return
-            time.sleep(REFRESH_SECONDS)
-            continue
+            wait(stop_event, refresh, sleep=time.sleep)
+    finally:
+        session.close()
 
-        if not dry_run:
-            health = read_panel_health(session, awtrix)
-            if animated_push_succeeded and unplanned_reboot(previous_health, health):
-                safe_mode = True
-                print("Panel reboot detected after animated AQI; using static icon safety mode")
-            if health is not None:
-                previous_health = health
 
-        payload = build_payload(snapshot, animated=not safe_mode)
-        if preview_path is not None:
-            saved = save_preview(snapshot, preview_path)
-            print(f"Preview: {saved}")
-
-        if dry_run:
-            body_size = len(json.dumps(payload, separators=(",", ":")).encode("utf-8"))
-            print(
-                f"Dry run: {display_text(snapshot.us_aqi)}; "
-                f"PM2.5={snapshot.pm2_5:g}; payload={body_size} bytes"
-            )
-            panel_failures = 0
-        else:
-            try:
-                push_payload(session, awtrix, payload)
-                remote_visible = True
-                animated_push_succeeded = animated_push_succeeded or not safe_mode
-                panel_failures = 0
-                print(
-                    f"Updated: {display_text(snapshot.us_aqi)}; PM2.5={snapshot.pm2_5:g}"
-                    f"{' [static safety]' if safe_mode else ''}"
-                )
-                if activation_pending:
-                    try:
-                        activate_app(session, awtrix)
-                        activation_pending = False
-                        print("Activated: AQI crossed into Unhealthy")
-                    except (requests.RequestException, RuntimeError, OSError) as error:
-                        print(f"AQI activation deferred: {error}")
-            except (requests.RequestException, RuntimeError, OSError) as error:
-                panel_failures += 1
-                if panel_failures >= SAFE_MODE_FAILURES and not safe_mode:
-                    safe_mode = True
-                    print("Repeated panel failures; latching static AQI icon safety mode")
-                if panel_failures in (1, 3, SAFE_MODE_FAILURES) or panel_failures % 12 == 0:
-                    print(f"Panel unavailable ({panel_failures}): {error}")
-                if once:
-                    raise
-                time.sleep(min(REFRESH_SECONDS, 15 * (2 ** min(panel_failures - 1, 5))))
-                continue
-
-        previous_aqi = snapshot.us_aqi
-
-        if once:
-            return
-        time.sleep(REFRESH_SECONDS)
+@worker_adapter("aqi")
+def run_worker(config: DriftMatrixConfig, stop_event: threading.Event) -> int:
+    options = config.services["aqi"].options
+    run(awtrix=config.panel.url, latitude=options["latitude"], longitude=options["longitude"],
+        static_only=options.get("static_only", False), stop_event=stop_event,
+        refresh_seconds=options.get("refresh_seconds"), request_timeout_seconds=options.get("request_timeout_seconds"),
+        quiet_hours=config.panel.quiet_hours, timezone_name=config.panel.timezone)
+    return 0
 
 
 def parse_args() -> argparse.Namespace:
@@ -717,9 +747,10 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def main() -> None:
+def main() -> int:
     args = parse_args()
-    try:
+    stop_event = threading.Event()
+    def execute():
         run(
             awtrix=args.awtrix,
             latitude=args.latitude,
@@ -728,9 +759,9 @@ def main() -> None:
             dry_run=args.dry_run,
             static_only=args.static,
             preview_path=args.preview,
+            stop_event=stop_event,
         )
-    except KeyboardInterrupt:
-        print("\nStopped. AQI Brief will remove itself if it is not refreshed.")
+    return run_owned("aqi", args.awtrix, default_data_dir(), stop_event, execute)
 
 
 if __name__ == "__main__":
@@ -742,7 +773,7 @@ if __name__ == "__main__":
 
     log = sender_logging.configure("aqi_brief")
     try:
-        main()
+        raise SystemExit(main())
     except Exception:
         log.exception("sender stopped on an unhandled error")
         raise

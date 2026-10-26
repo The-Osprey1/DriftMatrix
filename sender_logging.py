@@ -38,6 +38,9 @@ BACKUP_COUNT = 2
 
 def log_folder() -> Path:
     """Where the senders keep their logs, outside the synced repository."""
+    from runtime_paths import current_data_dir
+    if current_data_dir() is not None:
+        return current_data_dir()
     local = os.environ.get("LOCALAPPDATA") or str(Path.home() / "AppData" / "Local")
     return Path(local) / "AWTRIX"
 

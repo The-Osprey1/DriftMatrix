@@ -18,12 +18,15 @@ import sys
 import threading
 import time
 from dataclasses import dataclass
+from contextvars import copy_context
 from typing import Any, Dict, Optional
 
 import requests
 from jsonschema import Draft7Validator
 
 import panel_gate
+from service_runtime import DriftMatrixConfig, run_owned, worker_adapter
+from focus_control import default_data_dir
 
 try:
     import serial
@@ -115,8 +118,8 @@ def build_hotkey_bindings(pad_config: dict[str, Any]) -> list[HotkeyBinding]:
 
 
 class DriftEcosystem:
-    def __init__(self, config_file: Optional[Path] = None):
-        self.config = self._load_config(config_file or CONFIG_PATH)
+    def __init__(self, config_file: Optional[Path] = None, *, config=None):
+        self.config = self._load_config(config_file or CONFIG_PATH) if config is None else config
         self.devices = self.config["ecosystem"]["devices"]
         matrix_cfg = self.devices.get("matrix", {})
         
@@ -375,9 +378,11 @@ def print_dashboard(eco: DriftEcosystem) -> None:
     print("=" * 65 + "\n")
 
 
-def run_hotkey_listener(eco: DriftEcosystem, daemon_mode: bool = False, *, user32=None) -> None:
+def run_hotkey_listener(eco: DriftEcosystem, daemon_mode: bool = False, *, user32=None,
+                       stop_event=None, thread_id=None) -> None:
     """Register configured shortcuts; USB adapter presence is not required."""
-    if not eco.device_enabled("pad") or not eco.device_enabled("matrix") or not eco.hotkeys:
+    if ((stop_event is not None and stop_event.is_set()) or not eco.device_enabled("pad")
+            or not eco.device_enabled("matrix") or not eco.hotkeys):
         logger.info("Drift-Link listener disabled or no macros configured")
         return
     if user32 is None:
@@ -386,7 +391,22 @@ def run_hotkey_listener(eco: DriftEcosystem, daemon_mode: bool = False, *, user3
         user32 = ctypes.windll.user32
 
     registered = {}
+    finished = threading.Event()
+    monitor = None
+    msg = wintypes.MSG()
     try:
+        if stop_event is not None:
+            # PeekMessage creates the owning thread's queue before any quit is posted.
+            user32.PeekMessageW(ctypes.byref(msg), None, 0, 0, 0)
+            owner = thread_id if thread_id is not None else ctypes.windll.kernel32.GetCurrentThreadId()
+            def request_quit():
+                while not finished.is_set():
+                    if stop_event.wait(0.05):
+                        if user32.PostThreadMessageW(owner, 0x0012, 0, 0):  # WM_QUIT
+                            return
+                        finished.wait(0.05)
+            monitor = threading.Thread(target=request_quit, name="drift-link-stop", daemon=True)
+            monitor.start()
         for hotkey_id, binding in enumerate(eco.hotkeys, start=1):
             if not user32.RegisterHotKey(None, hotkey_id, binding.modifiers, binding.virtual_key):
                 raise RuntimeError(f"Could not register hotkey {binding.hotkey}; it may be in use")
@@ -398,14 +418,14 @@ def run_hotkey_listener(eco: DriftEcosystem, daemon_mode: bool = False, *, user3
                 print(f"  {binding.hotkey}: {binding.name} -> {binding.action} {binding.target}")
             print("Listening... Press Ctrl+C to exit.")
 
-        msg = wintypes.MSG()
         while True:
             result = user32.GetMessageW(ctypes.byref(msg), None, 0, 0)
             if result == 0:
                 break
             if result == -1:
                 raise RuntimeError("Windows hotkey message loop failed")
-            if msg.message == 0x0312 and msg.wParam in registered:  # WM_HOTKEY
+            if (msg.message == 0x0312 and msg.wParam in registered
+                    and not (stop_event is not None and stop_event.is_set())):  # WM_HOTKEY
                 binding = registered[msg.wParam]
                 eco.bus.publish(DriftEvent(
                     event_type=DriftEventType.MACRO_TRIGGERED,
@@ -418,28 +438,75 @@ def run_hotkey_listener(eco: DriftEcosystem, daemon_mode: bool = False, *, user3
     except KeyboardInterrupt:
         logger.info("Stopping Drift-Link listener")
     finally:
+        finished.set()
+        if monitor is not None:
+            monitor.join()
         for hotkey_id in registered:
             user32.UnregisterHotKey(None, hotkey_id)
-        eco.bus.stop()
+        eco.bus.stop(timeout=None)
 
 
-def run_daemon(eco: DriftEcosystem) -> None:
+def start_hotkey_thread(eco, stop_event, *, daemon_mode=True):
+    """Keep the main thread available for Python's console signal handlers."""
+    failures = []
+    def listen():
+        try:
+            run_hotkey_listener(eco, daemon_mode, stop_event=stop_event)
+        except BaseException as error:
+            failures.append(error)
+        finally:
+            stop_event.set()
+    listener_thread = threading.Thread(target=copy_context().run, args=(listen,),
+                                       name="HotkeyListenerThread", daemon=True)
+    listener_thread.start()
+    return listener_thread, failures
+
+
+def run_daemon(eco: DriftEcosystem, stop_event=None) -> None:
     """Run full background ecosystem orchestrator with heartbeat and listener."""
     logger.info("Starting Drift Hardware Ecosystem Background Daemon...")
-    listener_thread = threading.Thread(
-        target=run_hotkey_listener, args=(eco, True), name="HotkeyListenerThread", daemon=True
-    )
-    listener_thread.start()
+    stop_event = stop_event or threading.Event()
+    listener_thread, failures = None, []
+    if eco.device_enabled("pad") and eco.device_enabled("matrix") and eco.hotkeys:
+        listener_thread, failures = start_hotkey_thread(eco, stop_event)
 
     try:
-        while True:
+        while not stop_event.is_set():
             # Read-only heartbeat at the configured polling interval.
             status = eco.get_ecosystem_status()
             detected = sum(1 for dev in status.values() if dev.connected)
             logger.info("Ecosystem heartbeat: %s endpoints/adapters detected; firmware sync unverified", detected)
-            time.sleep(eco.devices["matrix"].get("poll_interval_s", 30))
+            stop_event.wait(eco.devices["matrix"].get("poll_interval_s", 30))
     except KeyboardInterrupt:
         logger.info("Daemon terminating gracefully.")
+    finally:
+        stop_event.set()
+        if listener_thread is not None:
+            listener_thread.join()
+    if failures:
+        raise RuntimeError("Drift-Link listener failed") from failures[0]
+
+
+@worker_adapter("drift_link")
+def run_worker(config: DriftMatrixConfig, stop_event: threading.Event) -> int:
+    options = config.to_mapping()["services"]["drift_link"]["options"]
+    devices = options.get("devices", {})
+    matrix = {"enabled": options.get("matrix_enabled", True), "url": config.panel.url}
+    for key in ("rotation_apps", "poll_interval_s"):
+        if key in options:
+            matrix[key] = options[key]
+    pad = {"enabled": False, **devices.get("pad", {}), "macro_mapping": options.get("macro_mapping", {})}
+    watch = {"enabled": False, **devices.get("watch", {})}
+    eco = DriftEcosystem(config={"version": "1.0.0", "ecosystem": {"devices": {
+        "matrix": matrix, "pad": pad, "watch": watch}}})
+    try:
+        if eco.hotkeys and matrix["enabled"] and sys.platform != "win32":
+            logger.error("Global hotkeys require Windows")
+            return 2
+        run_daemon(eco, stop_event)
+        return 0
+    finally:
+        eco.session.close()
 
 
 def main():
@@ -458,31 +525,49 @@ def main():
     except ValueError as error:
         parser.error(str(error))
 
-    if args.command == "status":
-        print_dashboard(eco)
-    elif args.command == "switch":
-        if not args.app:
-            print("Error: Specify --app <name>")
-            sys.exit(1)
-        ok = eco.switch_matrix_app(args.app)
-        print(f"Switching DriftMatrix to '{args.app}': {'SUCCESS' if ok else 'FAILED'}")
-        if not ok:
-            raise SystemExit(1)
-    elif args.command == "alert":
-        msg = args.message or "DRIFT LINK"
-        if not eco.push_matrix_notification(msg):
-            parser.exit(1, "Matrix alert failed or matrix disabled.\n")
-        print("Alert accepted by DriftMatrix; watch delivery is not implemented.")
-    elif args.command == "monitor":
-        print("Starting Drift Ecosystem real-time monitor... Press Ctrl+C to stop.")
-        while True:
+    stop_event = threading.Event()
+    def execute():
+        if args.command == "status":
             print_dashboard(eco)
-            time.sleep(10)
-    elif args.command == "listen":
-        run_hotkey_listener(eco)
-    elif args.command == "daemon":
-        run_daemon(eco)
+        elif args.command == "switch":
+            if not args.app:
+                print("Error: Specify --app <name>")
+                sys.exit(1)
+            ok = eco.switch_matrix_app(args.app)
+            print(f"Switching DriftMatrix to '{args.app}': {'SUCCESS' if ok else 'FAILED'}")
+            if not ok:
+                raise SystemExit(1)
+        elif args.command == "alert":
+            msg = args.message or "DRIFT LINK"
+            if not eco.push_matrix_notification(msg):
+                parser.exit(1, "Matrix alert failed or matrix disabled.\n")
+            print("Alert accepted by DriftMatrix; watch delivery is not implemented.")
+        elif args.command == "monitor":
+            print("Starting Drift Ecosystem real-time monitor... Press Ctrl+C to stop.")
+            while not stop_event.is_set():
+                print_dashboard(eco)
+                stop_event.wait(10)
+        elif args.command == "listen":
+            listener, failures = start_hotkey_thread(eco, stop_event, daemon_mode=False)
+            try:
+                while listener.is_alive():
+                    listener.join(0.05)
+            finally:
+                stop_event.set()
+                listener.join()
+            if failures:
+                raise RuntimeError("Drift-Link listener failed") from failures[0]
+        elif args.command == "daemon":
+            run_daemon(eco, stop_event)
+
+        return 0
+    try:
+        if args.command == "status":
+            return execute()
+        return run_owned("drift_link", eco.matrix_url, default_data_dir(), stop_event, execute)
+    finally:
+        eco.session.close()
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())

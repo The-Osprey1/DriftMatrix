@@ -175,7 +175,9 @@ def _running_tests(modules: Mapping[str, Any] | None = None) -> bool:
 
 
 def _defaults_to_live_dir_under_test(data_dir: Path | str | None) -> bool:
-    return data_dir is None and not os.environ.get(DIR_ENV, "").strip() and _running_tests()
+    from runtime_paths import current_data_dir
+    return (data_dir is None and current_data_dir() is None
+            and not os.environ.get(DIR_ENV, "").strip() and _running_tests())
 
 
 def gap_seconds() -> float:

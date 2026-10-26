@@ -33,7 +33,7 @@ driftmatrix = "driftmatrix:main"
 
 [tool.setuptools]
 packages = ["driftmatrix_config"]
-py-modules = ["config_loader", "config_migration", "driftmatrix"]
+py-modules = ["config_loader", "config_migration", "driftmatrix", "runtime_paths", "service_runtime"]
 
 [tool.setuptools.package-data]
 driftmatrix_config = ["*.json"]

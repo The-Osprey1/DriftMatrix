@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
+from contextvars import copy_context
 from enum import Enum
 import json
 import logging
@@ -109,30 +110,44 @@ class DriftEventBus:
         with self._lock:
             if self._running:
                 return
+            if self._worker_thread and self._worker_thread.is_alive():
+                raise RuntimeError("Previous event worker is still stopping")
             self._running = True
             self._worker_thread = threading.Thread(
-                target=self._run_worker, name="DriftEventBusWorker", daemon=True
+                target=copy_context().run, args=(self._run_worker,), name="DriftEventBusWorker", daemon=True
             )
             self._worker_thread.start()
 
-    def stop(self, timeout: float = 2.0) -> None:
+    def stop(self, timeout: float | None = 2.0) -> None:
         """Stop the background worker thread."""
         with self._lock:
-            if not self._running:
-                return
-            self._running = False
-            self._queue.put(None)  # Sentinel to unblock get()
+            if self._running:
+                self._running = False
+                try:
+                    self._queue.put_nowait(None)
+                except queue.Full:
+                    pass  # The active handler exits on _running; never block under _lock.
 
-        if self._worker_thread and self._worker_thread.is_alive():
+        if (self._worker_thread and self._worker_thread.is_alive()
+                and self._worker_thread is not threading.current_thread()):
             self._worker_thread.join(timeout=timeout)
+        if not self._worker_thread or not self._worker_thread.is_alive():
+            while True:
+                try:
+                    self._queue.get_nowait()
+                    self._queue.task_done()
+                except queue.Empty:
+                    break
 
     def _run_worker(self) -> None:
         while self._running:
             try:
                 event = self._queue.get(timeout=0.2)
-                if event is None:
-                    break
-                self._dispatch(event)
-                self._queue.task_done()
+                try:
+                    if event is None or not self._running:
+                        break
+                    self._dispatch(event)
+                finally:
+                    self._queue.task_done()
             except queue.Empty:
                 continue

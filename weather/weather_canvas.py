@@ -32,7 +32,10 @@ from typing import Sequence
 
 from PIL import Image
 
-import weather_icons as icons
+try:
+    from . import weather_icons as icons
+except ImportError:  # Direct standalone execution from weather/.
+    import weather_icons as icons
 
 RGB = tuple[int, int, int]
 Frame = list[list[RGB]]

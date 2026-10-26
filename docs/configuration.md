@@ -1,6 +1,6 @@
 # Canonical configuration and offline migration (Step 4A)
 
-Step 4A provides a schema, immutable configuration loader, and offline commands. These commands do not start workers, register hotkeys, open network connections, inspect scheduled tasks, or contact the panel. Existing standalone senders continue using their existing configuration until worker adapters are implemented in Step 4B.
+Step 4A provides a schema, immutable configuration loader, and offline commands. These commands do not start workers, register hotkeys, open network connections, inspect scheduled tasks, or contact the panel. [Step 4B worker adapters](workers.md) now accept this canonical configuration through Python APIs. Existing standalone senders retain their existing configuration selection; adoption is explicit.
 
 ## Commands
 
@@ -111,4 +111,4 @@ All original inputs remain unchanged. The commands do not replace live configura
 
 ## Next phases
 
-Step 4B adds worker adapters and cooperative shutdown. Step 4C adds ownership locks, process supervision, and `run`/`status`/`stop`. Those runtime commands are intentionally absent from the Step 4A CLI. Live acceptance and rollback remain separate from offline schema and migration checks.
+Step 4B provides worker adapters, cooperative shutdown, and the per-service ownership primitive shared with updated standalone entry points. Step 4C adds process supervision, supervisor ownership, restart management, and `run`/`status`/`stop`. Those runtime commands are intentionally absent from the offline CLI. Live acceptance and rollback remain separate from offline schema and migration checks.

@@ -45,6 +45,9 @@ except ImportError:
     )
 
 import panel_gate
+import threading
+from service_runtime import DriftMatrixConfig, run_owned, worker_adapter, wait, in_quiet_hours
+from focus_control import default_data_dir
 from visual_system import (
     CORAL, GOLD, ICE, MINT, PEARL, RGB, VIOLET, Frame, draw_comet, gamma_lerp, render_glance_lane,
     scale_color,
@@ -940,7 +943,18 @@ def should_log(misses: int) -> bool:
     return misses in (1, 5) or misses % 60 == 0
 
 
-def retry_delay(failure_count: int) -> float:
+@dataclass(frozen=True)
+class PCSettings:
+    panel_url: str
+    interval_seconds: float = INTERVAL
+    refresh_delta_points: float = REFRESH_DELTA_POINTS
+    refresh_confirm_samples: int = REFRESH_CONFIRM_SAMPLES
+    request_timeout_seconds: float = REQUEST_TIMEOUT
+    quiet_hours: object = None
+    timezone_name: str | None = None
+
+
+def retry_delay(failure_count: int, *, settings: PCSettings | None = None) -> float:
     """Seconds from a failed panel write to the next write attempt.
 
     INTERVAL, doubling, capped at RETRY_MAX_SECONDS: 5, 10, 20, 40, 60. It
@@ -949,25 +963,31 @@ def retry_delay(failure_count: int) -> float:
     after a refused animated page, still goes out on the next reading.
     """
     failure_count = max(1, int(failure_count))
-    return float(min(RETRY_MAX_SECONDS, INTERVAL * 2 ** min(failure_count - 1, 5)))
+    return float(min(RETRY_MAX_SECONDS, (settings.interval_seconds if settings else INTERVAL) * 2 ** min(failure_count - 1, 5)))
 
 
-def is_quiet_time(moment: datetime | None = None) -> bool:
-    moment = datetime.now().astimezone() if moment is None else moment
+def is_quiet_time(moment: datetime | None = None, *, settings: PCSettings | None = None) -> bool:
+    if settings and settings.timezone_name:
+        from zoneinfo import ZoneInfo
+        moment = datetime.now(ZoneInfo(settings.timezone_name)) if moment is None else moment
+    else:
+        moment = datetime.now().astimezone() if moment is None else moment
+    if settings and settings.quiet_hours is not None:
+        return in_quiet_hours(moment, settings.quiet_hours)
     minute = moment.hour * 60 + moment.minute
     return minute >= QUIET_START_MINUTE or minute < QUIET_END_MINUTE
 
 
-def activate_app() -> str | None:
+def activate_app(*, settings: PCSettings | None = None) -> str | None:
     """Show a newly triggered alert once, without waking a blacked-out panel."""
 
     try:
         body = {"name": APP_NAME, "fast": False}
         with panel_gate.mutation(GATE_SOURCE, "activate", APP_NAME, body=body) as gate:
             response = requests.put(
-                ACTIVE_URL,
+                (settings.panel_url + "/api/v1/apps/active") if settings else ACTIVE_URL,
                 json=body,
-                timeout=REQUEST_TIMEOUT,
+                timeout=settings.request_timeout_seconds if settings else REQUEST_TIMEOUT,
             )
             gate.observe(response)
     except requests.RequestException as error:
@@ -1034,6 +1054,7 @@ def sync_panel(
     histories: dict[str, tuple[float, ...]] | None = None,
     *,
     legacy_cleanup: bool = True,
+    settings: PCSettings | None = None,
 ) -> tuple[tuple[str, ...] | None, str | None]:
     """Make the panel match the active metrics and return (state, error).
 
@@ -1041,6 +1062,11 @@ def sync_panel(
     been answered, so a startup cleanup the panel keeps refusing retries only
     the direct slot that is actually blocking it.
     """
+    timeout = settings.request_timeout_seconds if settings else REQUEST_TIMEOUT
+    push_url = settings.panel_url + "/api/v1/apps/pushed/" + APP_NAME if settings else URL
+    delete_url = settings.panel_url + "/api/v1/apps/" + APP_NAME if settings else DELETE_URL
+    legacy_urls = ((settings.panel_url + "/api/v1/apps/pcstats", settings.panel_url + "/api/v1/apps/pcstats1")
+                   if settings else (LEGACY_DELETE_URL, *LEGACY_CHILD_URLS))
     desired_labels = tuple(label for label, _ in metrics)
     current_labels = published_labels
 
@@ -1053,14 +1079,14 @@ def sync_panel(
             # dead entry in the app list, which is not a reason to withhold a
             # CPU alert -- and blocking on them meant a persistent non-404
             # error suppressed every alert for the life of the process.
-            for cleanup_url in (LEGACY_DELETE_URL, *LEGACY_CHILD_URLS) if legacy_cleanup else ():
+            for cleanup_url in legacy_urls if legacy_cleanup else ():
                 legacy = cleanup_url.rsplit("/", 1)[-1]
                 with panel_gate.mutation(GATE_SOURCE, "delete", legacy) as gate:
-                    gate.observe(requests.delete(cleanup_url, timeout=REQUEST_TIMEOUT))
+                    gate.observe(requests.delete(cleanup_url, timeout=timeout))
             # The direct slot is different: an object left under this exact
             # name by an earlier run would conflict with the page below.
             with panel_gate.mutation(GATE_SOURCE, "delete", APP_NAME) as gate:
-                response = requests.delete(DELETE_URL, timeout=REQUEST_TIMEOUT)
+                response = requests.delete(delete_url, timeout=timeout)
                 gate.observe(response)
             if not (200 <= response.status_code < 300 or response.status_code == 404):
                 return current_labels, _http_error("cleanup", response)
@@ -1070,7 +1096,7 @@ def sync_panel(
         if not metrics:
             if current_labels:
                 with panel_gate.mutation(GATE_SOURCE, "delete", APP_NAME) as gate:
-                    response = requests.delete(DELETE_URL, timeout=REQUEST_TIMEOUT)
+                    response = requests.delete(delete_url, timeout=timeout)
                     gate.observe(response)
                 if not (200 <= response.status_code < 300 or response.status_code == 404):
                     return current_labels, _http_error("cleanup", response)
@@ -1081,7 +1107,7 @@ def sync_panel(
             return current_labels, rejection
 
         with panel_gate.mutation(GATE_SOURCE, "push", APP_NAME, body=page) as gate:
-            response = requests.put(URL, json=page, timeout=REQUEST_TIMEOUT)
+            response = requests.put(push_url, json=page, timeout=timeout)
             gate.observe(response)
         if 200 <= response.status_code < 300:
             return desired_labels, None
@@ -1090,10 +1116,11 @@ def sync_panel(
         return current_labels, _transport_error(error)
 
 
-def read_panel_health() -> PanelHealth | None:
+def read_panel_health(*, settings: PCSettings | None = None) -> PanelHealth | None:
     """Read only the boot marker; never touch the framebuffer endpoint."""
     try:
-        response = requests.get(DEVICE_URL, timeout=REQUEST_TIMEOUT)
+        response = requests.get(settings.panel_url + "/api/v1/device" if settings else DEVICE_URL,
+                                timeout=settings.request_timeout_seconds if settings else REQUEST_TIMEOUT)
     except requests.RequestException:
         return None
     if not 200 <= response.status_code < 300:
@@ -1163,14 +1190,14 @@ def held_metrics(
     return [(label, float(value)) for label, value in held]
 
 
-def shows_change(view: PageView, published: PageView) -> bool:
+def shows_change(view: PageView, published: PageView, *, settings: PCSettings | None = None) -> bool:
     """Whether this page would look meaningfully different from the panel's."""
     return (
         view.labels != published.labels
         or view.face != published.face
         or view.icon_levels != published.icon_levels
         or view.lane_level != published.lane_level
-        or abs(view.percent - published.percent) >= REFRESH_DELTA_POINTS
+        or abs(view.percent - published.percent) >= (settings.refresh_delta_points if settings else REFRESH_DELTA_POINTS)
     )
 
 
@@ -1194,7 +1221,7 @@ def relabelled_in_place(
     return page_view(metrics).face == published_view.face
 
 
-def keepalive_due(since_push: float, overhead: float = 0.0) -> bool:
+def keepalive_due(since_push: float, overhead: float = 0.0, *, settings: PCSettings | None = None) -> bool:
     """Whether an unchanged page must be rewritten now to be sure it stays up.
 
     Readings come every INTERVAL plus ``overhead``, the time sampling takes.
@@ -1202,7 +1229,8 @@ def keepalive_due(since_push: float, overhead: float = 0.0) -> bool:
     leave its retry a full REQUEST_TIMEOUT before LIFETIME_MS (see
     KEEPALIVE_SECONDS). The more each reading costs, the earlier it goes.
     """
-    return since_push >= KEEPALIVE_SECONDS - 2 * max(0.0, overhead)
+    keepalive = 45 - 2 * settings.request_timeout_seconds - 2 * settings.interval_seconds if settings else KEEPALIVE_SECONDS
+    return since_push >= keepalive - 2 * max(0.0, overhead)
 
 
 def refresh_due(
@@ -1211,6 +1239,7 @@ def refresh_due(
     since_push: float,
     change_streak: int = 0,
     overhead: float = 0.0,
+    settings: PCSettings | None = None,
 ) -> bool:
     """Whether a live page with the same labels has changed enough to rewrite.
 
@@ -1221,11 +1250,11 @@ def refresh_due(
     """
     if published is None or view.labels != published.labels:
         return True
-    if keepalive_due(since_push, overhead):
+    if keepalive_due(since_push, overhead, settings=settings):
         return True
-    if since_push < PUSH_INTERVAL or change_streak < REFRESH_CONFIRM_SAMPLES:
+    if since_push < PUSH_INTERVAL or change_streak < (settings.refresh_confirm_samples if settings else REFRESH_CONFIRM_SAMPLES):
         return False
-    return shows_change(view, published)
+    return shows_change(view, published, settings=settings)
 
 
 def sync_due(
@@ -1240,6 +1269,7 @@ def sync_due(
     held: bool = False,
     change_streak: int = 0,
     overhead: float = 0.0,
+    settings: PCSettings | None = None,
 ) -> bool:
     """Whether the panel needs a write now.
 
@@ -1282,12 +1312,16 @@ def sync_due(
         now - published_at,
         change_streak=change_streak,
         overhead=overhead,
+        settings=settings,
     )
 
 
-def main() -> None:
+def run_pc_stats(stop_event=None, settings: PCSettings | None = None) -> None:
+    interval = settings.interval_seconds if settings else INTERVAL
+    def call(function, *args, **kwargs):
+        return function(*args, **kwargs, **({"settings": settings} if settings is not None else {}))
     psutil.cpu_percent(interval=None)  # prime the counter, first call reads 0.0
-    time.sleep(0.2)  # give the first real CPU sample enough time to accumulate
+    wait(stop_event, 0.2, sleep=time.sleep)  # give the first real CPU sample enough time to accumulate
 
     cpu_gate = MetricGate(CPU_SHOW_AT, CPU_CLEAR_BELOW)
     ram_gate = MetricGate(RAM_SHOW_AT, RAM_CLEAR_BELOW)
@@ -1320,10 +1354,10 @@ def main() -> None:
     print(
         f"Watching CPU >= {CPU_SHOW_AT}%, RAM >= {RAM_SHOW_AT}%, "
         f"GPU >= {GPU_SHOW_AT}%, NET >= {NET_SHOW_AT} MB/s every "
-        f"{INTERVAL}s. The panel stays quiet otherwise. Ctrl+C to stop."
+        f"{interval}s. The panel stays quiet otherwise. Ctrl+C to stop."
     )
 
-    while True:
+    while stop_event is None or not stop_event.is_set():
         now_sample = time.monotonic()
         cpu, ram = read_stats()
 
@@ -1374,6 +1408,8 @@ def main() -> None:
             "NET": tuple(net_history),
         }
 
+        if stop_event is not None and stop_event.is_set():
+            return
         now = time.monotonic()
         overheads.append(max(0.0, now - now_sample))
         guard.settle(now)
@@ -1403,7 +1439,7 @@ def main() -> None:
         # RETRY_MAX_SECONDS). The GET is read-only and is never journaled.
         outage_probe = backoff_unreachable and probe_may_lift and now < next_write
         if display and (now >= next_health_probe or outage_probe):
-            health = read_panel_health()
+            health = call(read_panel_health)
             if animated_push_succeeded and unplanned_reboot(previous_health, health):
                 guard.refused(now)
                 print("  panel reboot detected; holding static PC alert icons")
@@ -1441,14 +1477,16 @@ def main() -> None:
             published_labels = tuple(label for label, _ in display)
             published_view = replace(published_view, labels=published_labels)
 
-        if display and published_view is not None and shows_change(
+        if display and published_view is not None and call(shows_change,
             page_view(display), published_view
         ):
             change_streak += 1
         else:
             change_streak = 0
 
-        if now >= next_write and sync_due(
+        if stop_event is not None and stop_event.is_set():
+            return
+        if now >= next_write and call(sync_due,
             display,
             published_labels,
             now,
@@ -1462,7 +1500,7 @@ def main() -> None:
         ):
             was_visible = bool(published_labels)
             cleaning_up = published_labels is None
-            published_labels, error = sync_panel(
+            published_labels, error = call(sync_panel,
                 display,
                 published_labels,
                 animated=animated,
@@ -1490,11 +1528,11 @@ def main() -> None:
                     if (
                         not was_visible
                         and published_labels
-                        and not is_quiet_time()
+                        and not call(is_quiet_time)
                         and now >= next_activation
                     ):
                         next_activation = now + ACTIVATION_COOLDOWN_SECONDS
-                        activation_error = activate_app()
+                        activation_error = call(activate_app)
                         if activation_error is not None:
                             print(f"  {activation_error}")
                 else:
@@ -1505,7 +1543,7 @@ def main() -> None:
                 misses += 1
                 # Lost or refused, the next write waits (RETRY_MAX_SECONDS).
                 # Only a lost one may be cut short by a probe that answers.
-                next_write = now + retry_delay(misses)
+                next_write = now + call(retry_delay, misses)
                 backoff_unreachable = not error.refused
                 if cleaning_up and error.refused:
                     # In the startup sync only the direct-slot delete, or the
@@ -1522,7 +1560,20 @@ def main() -> None:
                 if should_log(misses):
                     print(f"  {error} ({misses} in a row)")
 
-        time.sleep(INTERVAL)
+        wait(stop_event, interval, sleep=time.sleep)
+
+
+def main(stop_event=None) -> int:
+    return run_owned("pc_stats", AWTRIX, default_data_dir(), stop_event or threading.Event(),
+                     lambda: run_pc_stats(stop_event))
+
+
+@worker_adapter("pc_stats")
+def run_worker(config: DriftMatrixConfig, stop_event: threading.Event) -> int:
+    settings = PCSettings(panel_url=config.panel.url, quiet_hours=config.panel.quiet_hours,
+                          timezone_name=config.panel.timezone, **dict(config.services["pc_stats"].options))
+    run_pc_stats(stop_event, settings)
+    return 0
 
 
 if __name__ == "__main__":
@@ -1534,7 +1585,7 @@ if __name__ == "__main__":
 
     log = sender_logging.configure("pc_stats")
     try:
-        main()
+        raise SystemExit(main(threading.Event()))
     except KeyboardInterrupt:
         print(f"\nStopped. Any visible alert will expire within {LIFETIME_MS // 1000}s.")
     except Exception:
