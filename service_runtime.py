@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import asyncio
 from contextlib import contextmanager
+from contextvars import ContextVar
 from functools import wraps
 from hashlib import sha256
 import logging
@@ -17,6 +18,7 @@ from config_loader import CanonicalConfig, SERVICE_NAMES, normalize_panel_url
 from runtime_paths import data_directory
 
 DriftMatrixConfig = CanonicalConfig
+_started = ContextVar("worker_started", default=None)
 
 
 class ServiceWorker(Protocol):
@@ -35,10 +37,24 @@ def ownership_root(data_dir):
 def service_ownership(service: str, panel_url: str, data_dir: Path):
     if service not in SERVICE_NAMES:
         raise ValueError("Unknown service")
+    with file_ownership(scope_directory(panel_url, data_dir) / f"service_{service}.lock") as path:
+        yield path
+
+
+def scope_directory(panel_url, data_dir):
     identity = sha256(normalize_panel_url(panel_url).encode("utf-8")).hexdigest()[:20]
-    directory = ownership_root(data_dir) / identity
-    directory.mkdir(parents=True, exist_ok=True)
-    path = directory / f"service_{service}.lock"
+    return ownership_root(data_dir) / identity
+
+
+@contextmanager
+def supervisor_ownership(panel_url, data_dir):
+    with file_ownership(scope_directory(panel_url, data_dir) / "supervisor.lock") as path:
+        yield path
+
+
+@contextmanager
+def file_ownership(path):
+    path.parent.mkdir(parents=True, exist_ok=True)
     descriptor = os.open(path, os.O_RDWR | os.O_CREAT, 0o600)
     locked = False
     try:
@@ -51,7 +67,7 @@ def service_ownership(service: str, panel_url: str, data_dir: Path):
                 import fcntl
                 fcntl.flock(descriptor, fcntl.LOCK_EX | fcntl.LOCK_NB)
         except OSError:
-            raise ServiceAlreadyRunning(f"Service {service} already has an owner or cannot be locked") from None
+            raise ServiceAlreadyRunning(f"{path.stem} already has an owner or cannot be locked") from None
         locked = True
         if os.fstat(descriptor).st_size == 0:
             os.write(descriptor, b"\0")
@@ -69,6 +85,15 @@ def service_ownership(service: str, panel_url: str, data_dir: Path):
         finally:
             os.close(descriptor)
         # Keep the inode: unlinking lets a new opener bypass an existing owner.
+
+
+@contextmanager
+def worker_notifications(callback):
+    token = _started.set(callback)
+    try:
+        yield
+    finally:
+        _started.reset(token)
 
 
 @contextmanager
@@ -92,6 +117,8 @@ def run_owned(service, panel_url, data_dir, stop_event, function):
         with service_ownership(service, panel_url, data_dir), data_directory(data_dir), stop_signals(stop_event):
             if stop_event.is_set():
                 return 0
+            if _started.get() is not None:
+                _started.get()()
             result = function()
             return 0 if result is None else result
     except ServiceAlreadyRunning as error:

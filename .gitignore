@@ -35,6 +35,9 @@ backups/2026-08-10-nightkeeper-baseline/*
 runtime/
 artifacts/
 .awtrix-runtime/
+service_locks/
+supervisor_status.json
+supervisor_control.json
 *.ics
 *.local.json
 utility_hub.json

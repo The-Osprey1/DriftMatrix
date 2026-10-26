@@ -30,6 +30,10 @@ jobs:
         python -m pip install --no-deps .
         driftmatrix validate --config driftmatrix_config/driftmatrix.example.json
 
+    - name: Verify installed worker runtime outside checkout
+      run: >-
+        python -c "import os,tempfile,importlib; os.chdir(tempfile.mkdtemp()); modules=['supervisor','supervisor_worker','utility_hub','now_playing_push','pc_stats_push','weather.weather_brief_push','weather.aqi_brief_push','drift_ecosystem']; loaded=[importlib.import_module(name) for name in modules]; import now_playing_push,drift_ecosystem; assert now_playing_push.SCRIPT_TEMPLATE_PATH.is_file(); assert drift_ecosystem.SCHEMA_PATH.is_file(); print('Installed runtime imports and resources verified')"
+
     - name: Install Linux display dependencies
       if: runner.os == 'Linux'
       run: |
