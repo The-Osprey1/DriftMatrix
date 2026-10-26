@@ -1,6 +1,8 @@
 # Python
 __pycache__/
 *.py[cod]
+*.egg-info/
+dist/
 .pytest_cache/
 
 # Sender logs — runtime output, not source
@@ -36,6 +38,7 @@ artifacts/
 *.ics
 *.local.json
 utility_hub.json
+driftmatrix.json
 focus_state.json
 desk_reminder.json
 hub_status.json

@@ -30,6 +30,7 @@ Because the ESP32 operates under tight memory constraints (interpreting Berry sc
 * Put every panel mutation inside `panel_gate.mutation(...)` and record the response with `gate.observe(response)`. Hub services should use `PanelClient`, which applies that gate along with its transport policies.
 * Ensure all telemetry pushers handle panel disconnections gracefully with exponential backoff rather than spamming HTTP requests.
 * Never log or leak personal credentials, Wi-Fi keys, or private calendar URLs.
+* Canonical configuration is validated by `config_loader.py` against the packaged Draft-07 schema. Keep migration offline and explicit; preserve provenance, reject unresolved conflicts, and never overwrite legacy inputs or an existing candidate. See [configuration and migration](docs/configuration.md).
 
 ---
 
