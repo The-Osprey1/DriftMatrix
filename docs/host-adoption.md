@@ -20,6 +20,8 @@ Compare normalized payload previews for representative weather, AQI, companion, 
 
 Inspect the real launch arguments and constants for every active sender. Prepare an inventory with explicit endpoint, timezone, quiet hours, sampling/refresh/request intervals, media port/staleness, and feed coordinates. Start with all worker enable flags false.
 
+On Windows, Weather and AQI use the native trust store through `truststore` while retaining certificate and hostname verification. Verify a read-only source fetch before declaring a feed stage accepted; a `RUNNING` process alone does not prove it can fetch or publish fresh data. Require a successful guarded push or intentional hide/delete after that stage starts.
+
 ```text
 driftmatrix migrate --from-hub C:/path/to/utility_hub.json --from-ecosystem drift_ecosystem.json --from-senders C:/path/to/sender-inventory.json --output C:/path/to/driftmatrix.json --report C:/path/to/migration_report.json
 driftmatrix validate --config C:/path/to/driftmatrix.json
@@ -48,6 +50,8 @@ The supervisor snapshots configuration at startup. Stop it before editing enable
 After staged lifecycle checks pass, create one supervisor task under the existing interactive user. WinRT media and global hotkeys require that interactive session. Preserve suitable logon triggers, restart settings, and unlimited duration. Point the action at a stable release directory, not a temporary review checkout or mutable branch.
 
 Keep original tasks archived and disabled for rollback. Start the supervisor task and verify its actual process tree, configuration hash, enabled worker states, fresh status, and absence of legacy duplicates. Repeat verification after the real scheduled-task launch rather than relying only on a manual test.
+
+Hidden `pythonw.exe` workers rescue absent stdout/stderr into their scoped rotating service log. Console workers retain their real streams. Verify this path after the actual hidden task launch so print-based PC/feed diagnostics are not lost.
 
 ## Resident-script and physical gates
 

@@ -598,6 +598,18 @@ def run(
         return function(*args, **({"timeout": request_timeout_seconds} if request_timeout_seconds is not None else {}))
     session = requests.Session()
     try:
+        try:
+            import ssl
+            import truststore
+            from requests.adapters import HTTPAdapter
+            context = truststore.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+            class _Adapter(HTTPAdapter):
+                def init_poolmanager(self, *args: Any, **kwargs: Any) -> Any:
+                    kwargs["ssl_context"] = context
+                    return super().init_poolmanager(*args, **kwargs)
+            session.mount("https://", _Adapter())
+        except (ImportError, AttributeError):
+            pass
         session.headers.update({"User-Agent": "AWTRIX-AQIBrief/1.0 (Open-Meteo/CAMS)"})
         api_failures = 0
         panel_failures = 0
