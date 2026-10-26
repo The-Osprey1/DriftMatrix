@@ -5,16 +5,19 @@ import importlib
 import logging
 from logging.handlers import RotatingFileHandler
 import os
+import sys
 import threading
 
 from config_loader import config_from_mapping
 from runtime_paths import data_directory
 from service_runtime import scope_directory, worker_notifications
+from sender_logging import _StreamToLog
 
 
 def worker_main(document, source_path, service, module_name, stop_event, connection):
     finished = threading.Event()
     handlers = []
+    rescued_streams = {}
     code = 1
 
     def notify(message):
@@ -49,6 +52,10 @@ def worker_main(document, source_path, service, module_name, stop_event, connect
             root.setLevel(settings["level"])
             root.addHandler(handler)
             handlers.append(handler)
+            for name, level in (("stdout", logging.INFO), ("stderr", logging.ERROR)):
+                if getattr(sys, name) is None:
+                    rescued_streams[name] = None
+                    setattr(sys, name, _StreamToLog(root, level))
             monitor.start()
             module = importlib.import_module(module_name)
             with worker_notifications(lambda: notify({"state": "RUNNING"})):
@@ -62,6 +69,9 @@ def worker_main(document, source_path, service, module_name, stop_event, connect
         if monitor.ident is not None:
             monitor.join(1)
         connection.close()
+        for name, previous in rescued_streams.items():
+            getattr(sys, name).flush()
+            setattr(sys, name, previous)
         for handler in handlers:
             logging.getLogger().removeHandler(handler)
             handler.close()
