@@ -21,6 +21,11 @@ def main(argv=None) -> int:
     migration.add_argument("--legacy-working-dir", type=Path, help="anchor for relative legacy calendar paths")
     migration.add_argument("--output", type=Path, help="new candidate file; existing files are never overwritten")
     migration.add_argument("--report", type=Path, help="optional new file for the redacted provenance report")
+    controls = commands.add_parser('controls', help='open local focus, reminder and service controls')
+    target = controls.add_mutually_exclusive_group()
+    target.add_argument('--config', type=Path)
+    target.add_argument('--data-dir', type=Path, help='explicit legacy local state folder')
+    target.add_argument('--demo', action='store_true', help='use isolated temporary state')
     for name, help_text in (("run", "run the foreground process supervisor"),
                             ("status", "inspect local supervisor and process status"),
                             ("stop", "request cooperative supervisor shutdown")):
@@ -29,6 +34,11 @@ def main(argv=None) -> int:
     args = parser.parse_args(argv)
     candidate_written = False
     try:
+        if args.command == 'controls':
+            from desk_controls import main as controls_main
+            selected = ['--demo'] if args.demo else (['--config', str(args.config)] if args.config
+                        else ['--data-dir', str(args.data_dir)] if args.data_dir else [])
+            return controls_main(selected)
         if args.command == "validate":
             config = load_config(args.config)
             result = {"status": "valid", "schema_version": config.schema_version,
