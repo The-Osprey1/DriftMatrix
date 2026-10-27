@@ -1,0 +1,10 @@
+{
+  "candidate_upload_bytes": 11855,
+  "candidate_upload_sha256": "1ecec5d69fbdc798807d970f1fa1253c39b7f044b2d9fbeb633ebe77c7cb9574",
+  "reference_upload_sha256": "90cd90e057a969d3011d17c3d8b6e5b35d838c5be28f9967237cab9d1f9f0669",
+  "sample_frames": 110,
+  "phase_inputs": "illustrative, deliberately selected",
+  "font": "captured glyphs plus project font fallback",
+  "physical_deployment": false,
+  "device_heap_fps": "unmeasured"
+}
