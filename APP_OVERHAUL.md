@@ -32,7 +32,7 @@ jobs for firmware compatibility passed. These are observations, not long-term pr
 | Desk Companion | Cleaner round silhouette, 120 ms blink, unchanged 1.92 s cycle and five mood props. | User visual review, then staged host adoption and physical appearance check. |
 | AQI | Existing six category designs retained as reference. Live service is explicitly static. | Review category legibility, severity pacing and whether animation should be enabled. |
 | Moon / Ocean | Installed sources preserved. Ocean 3.0 adds visible-time lifecycle, a clearer visitor and compact caches. Moon 2.2 adds width-aware information, complete percentages and bounded camera motion. See `OCEAN_OVERHAUL.md` / `MOON_OVERHAUL.md`. | Exact-identity legacy Ocean rollback support, user visual review, then guarded physical memory/FPS and appearance checks for both candidates. |
-| Now Playing / information apps | Calendar holds ETA/title cards; Focus and reminders use truthful long-duration labels. Earthquake distance and game-process age now stay visible beside magnitude/temperature, with configured origins and still fallbacks. See `INFORMATION_OVERHAUL.md` / `ALERT_CONTEXT_OVERHAUL.md`. | Review Now Playing title/progress, then visual/physical adoption gates. |
+| Now Playing / information apps | Calendar, timers and alert context have staged candidates. Separate Now Playing 2.2 preserves normal title scrolling, clears the gutter, bounds record motion and adds optional held reduced-motion cards. See `INFORMATION_OVERHAUL.md`, `ALERT_CONTEXT_OVERHAUL.md` and `NOW_PLAYING_OVERHAUL.md`. | User visual review, device memory/FPS and physical adoption gates. |
 | Everyday controls | Canonical-aware `driftmatrix controls`, custom Focus/snooze durations, persistent feedback and local service overview are implemented. Focus commits state before queue acknowledgement. PR #10 passed 6/6 CI. See `docs/desk-controls.md`. | User review, then guarded host-release adoption. Screen-reader acceptance is unverified. |
 
 ## First visual pass
@@ -115,3 +115,13 @@ now provide real still fallbacks to the existing guarded transport. Thirteen
 actual-payload comparisons cover ordinary, missing-data and formatting states.
 See `ALERT_CONTEXT_OVERHAUL.md`. Physical glyph legibility and candidate adoption
 remain open acceptance items.
+
+## Now Playing follow-up
+
+The separate 2.2 candidate keeps the existing title scroller while correcting the
+gutter, bounding visible record motion and clearing outgoing stale titles. An
+optional canonical reduced-motion mode holds complete glyph cards with a still
+record and progress leader. The four-state source-executed comparison covers full
+visits, with explicit JSON/HTTP model boundaries and raw/minified parity checks.
+The installed 2.1 reference and default selection are preserved. See
+`NOW_PLAYING_OVERHAUL.md`; actual VM cost and physical readability remain open.

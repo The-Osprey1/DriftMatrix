@@ -791,6 +791,9 @@
         },
         "allow_script_install": {
           "type": "boolean"
+        },
+        "reduced_motion": {
+          "type": "boolean"
         }
       }
     },

@@ -1,0 +1,28 @@
+{
+  "reference_sha256_utf8_lf": "be1829ea3043841402133d867f0efa58f24afe6f6bcd642184129619907ce6b2",
+  "candidate_sha256_utf8_lf": "9c027970cca1729e044ba4c0c320e2812de3ef10eafb1b32f7cf549b39ce315d",
+  "baseline_revision": "acd73dd0a77f383942d9c4b131eeb55ef17aad2e",
+  "minified_bytes": [
+    7349,
+    9553
+  ],
+  "synthetic_state_url": "http://192.0.2.40:8765/nowplaying",
+  "rendered_minified_bytes": [
+    7369,
+    9573
+  ],
+  "model_sha256_utf8_lf": {
+    "now_playing_review.py": "e6aabb38f2b496a6afeab1d56acb333f080aaa868217a05f83c5c7a633c5916e",
+    "weather/berry_lite.py": "51b646a56e47692742a091537185b0f8c59738a41bfa1f038c5e043e7d87baaf"
+  },
+  "frame_ms": 25,
+  "export_ms": 150,
+  "sample_ms": 10800,
+  "states": [
+    "Short title / known progress",
+    "Long title / ordinary motion",
+    "Reduced motion / held whole-glyph cards",
+    "Unknown progress / held title"
+  ],
+  "limitations": "Float32 subset with JSON/HTTP adapters; not real Berry, device heap/FPS or physical LEDs"
+}

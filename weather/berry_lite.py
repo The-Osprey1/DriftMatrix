@@ -7,7 +7,8 @@ so a test can execute the exact bytes that will be uploaded.
 
 Covered: top-level ``var``, ``class`` with ``var`` members and ``def``
 methods, ``def``, ``var`` lists, ``if/elif/else``, ``while``, ``for x : list``,
-``break``, ``continue``, ``return``, ``= += -= *= /= %=``, the ternary, every
+inclusive integer ``a..b`` ranges (default increment 1), ``break``, ``continue``,
+``return``, ``= += -= *= /= %=``, the ternary, every
 arithmetic, bitwise, comparison and logical operator with Berry's precedence
 (bitwise binds tighter than comparison), calls, members, indexing, list
 literals, ``nil true false self``, ``int() real() str() bytes()``, and the
@@ -63,7 +64,7 @@ _TOKEN = re.compile(
     r"""
     (?P<ws>[ \t\r\n]+)
   | (?P<comment>\#-.*?-\#|\#[^\n]*)
-  | (?P<real>(?:\d+\.\d*|\.\d+)(?:[eE][+-]?\d+)?|\d+[eE][+-]?\d+)
+  | (?P<real>(?:\d+\.(?!\.)\d*|\.\d+)(?:[eE][+-]?\d+)?|\d+[eE][+-]?\d+)
   | (?P<int>0[xX][0-9A-Fa-f]+|\d+)
   | (?P<str>"(?:[^"\\\n]|\\.)*"|'(?:[^'\\\n]|\\.)*')
   | (?P<name>[A-Za-z_][A-Za-z0-9_]*)
@@ -573,9 +574,17 @@ def _make_runtime(real_type: Callable[[Any], Any], resize_fill: int) -> dict[str
         raise BerryError(f"attribute_error: {_tname(o)}.{name}() is not modelled")
 
     def iterate(o):
+        if isinstance(o, range):
+            return o
         if isinstance(o, (list, bytearray)):
             return list(o)
         raise BerryError(f"type_error: cannot iterate {_tname(o)}")
+
+    def integer_range(lower, upper):
+        ints(lower, upper, '..')
+        # Berry literals include both bounds, with default increment 1.
+        # https://berry.readthedocs.io/en/latest/source/en/Chapter-2.html#range
+        return range(lower, upper + 1)
 
     def b_int(v=0):
         if type(v) is int:
@@ -627,7 +636,7 @@ def _make_runtime(real_type: Callable[[Any], Any], resize_fill: int) -> dict[str
         "_lt": b_lt, "_le": b_le, "_gt": b_gt, "_ge": b_ge, "_eq": b_eq, "_ne": b_ne,
         "_truth": truth, "_neg": b_neg, "_inv": b_inv,
         "_index": index, "_setindex": setindex, "_member": member, "_setmember": setmember,
-        "_mcall": mcall, "_iter": iterate, "_RT": RT,
+        "_mcall": mcall, "_iter": iterate, "_range": integer_range, "_RT": RT,
         "B_int": b_int, "B_real": b_real, "B_str": b_str, "B_bytes": b_bytes,
         "BerryObject": BerryObject, "BerryError": BerryError,
     }
@@ -726,7 +735,7 @@ class _Gen:
             if op == "||":
                 return f"(_truth({self.expr(a, scope)}) or _truth({self.expr(b, scope)}))"
             if op == "..":
-                raise BerryError("ranges are not supported")
+                return f"_range({self.expr(a, scope)}, {self.expr(b, scope)})"
             return f"{_BINOP[op]}({self.expr(a, scope)}, {self.expr(b, scope)})"
         if kind == "un":
             op, a = node[1], node[2]
