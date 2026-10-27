@@ -3,9 +3,8 @@
 Present only while a game process is running; gone the moment it exits.
 
     icon   a gamepad whose face buttons light in turn
-    row 0  GPU load, 0..100% across the lane
-    text   GPU temperature, coloured by how hot it is
-    row 7  session length, one pixel per five minutes (the rail fills in ~2 h)
+    lane   GPU temperature and game-process age in two held rows
+    row 7  one temperature rail; a still fallback keeps both readings
 
 A "game" is a process whose executable lives under a known game library
 folder (Steam, Epic, Xbox, GOG, EA, Ubisoft, Riot, Battle.net), minus the
@@ -20,15 +19,17 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 import logging
+import math
 from pathlib import PureWindowsPath
 import subprocess
 import time
 from typing import Any, Callable, Iterable
 
-from panel_scene import PresenceScene, encode_icon_gif, lane_payload, pattern_frame, rail_row, run_scene
+from panel_scene import PresenceScene, encode_icon_gif, lane_payload, pattern_frame, run_scene
 from visual_system import (
-    AMBER, CORAL, DIM_GRAY, GOLD, HEIGHT, ICE, LANE_WIDTH, LANE_X0, MINT, PEARL, RGB, TRACK,
-    VIOLET, Frame, draw_text, measure_text, new_frame, put_pixel, render_glance_lane,
+    AMBER, CORAL, GOLD, ICE, LANE_WIDTH, MINT, PEARL, RGB,
+    VIOLET, Frame, measure_text_3x3, new_frame,
+    render_split_lane, draw_level_rail, MIST,
 )
 
 APP_NAME = "game0"
@@ -198,23 +199,35 @@ def temperature_level(temp_c: int) -> str:
     return "bad"
 
 
-def render_lane(gpu: GpuReading | None, session_minutes: int = 0) -> Frame:
-    """Calm glance: GPU temperature, with the meter showing how hot on its scale.
+def elapsed_label(minutes: int | float | None) -> str:
+    if (isinstance(minutes, bool) or not isinstance(minutes, (int, float))
+            or not math.isfinite(minutes) or minutes < 0):
+        return 'AGE?'
+    whole = math.floor(minutes)
+    if whole < 60:
+        return f'{whole}M'
+    hours, remainder = divmod(whole, 60)
+    return f'{hours}H{remainder:02d}' if hours < 100 else '99H+'
 
-    The earlier load bar on row 0 and session bar on row 7 were two unlabeled
-    meters with different meanings; the panel-wide rule is one meter, on row
-    7, measuring the value the text shows.
-    """
-    if gpu is None:
-        return render_glance_lane("GPU?")
+
+def render_lane(gpu: GpuReading | None, session_minutes: int | None = 0) -> Frame:
+    """Temperature and process age together; only temperature owns the rail."""
+    temp = getattr(gpu, 'temperature_c', None)
+    valid = (not isinstance(temp, bool) and isinstance(temp, (int, float))
+             and math.isfinite(temp) and measure_text_3x3(f'{round(temp)}C') <= LANE_WIDTH)
+    value = f'{round(temp)}C' if valid else 'GPU?'
+    frame = render_split_lane(value, elapsed_label(session_minutes), bottom_color=MIST)
     lo, hi = TEMP_SCALE_C
-    return render_glance_lane(f"{gpu.temperature_c}C",
-                              meter=(gpu.temperature_c - lo) / (hi - lo),
-                              level=temperature_level(gpu.temperature_c))
+    draw_level_rail(frame, (temp - lo) / (hi - lo) if valid else None,
+                    temperature_level(temp) if valid else 'info')
+    return frame
 
 
-def build_payload(gpu: GpuReading | None, session_minutes: int) -> dict[str, Any]:
-    return lane_payload(render_lane(gpu, session_minutes), encode_icon_gif(icon_frames()),
+def build_payload(gpu: GpuReading | None, session_minutes: int | None, *, animated=True) -> dict[str, Any]:
+    frames = icon_frames()
+    if not animated:
+        frames = frames[:1]
+    return lane_payload(render_lane(gpu, session_minutes), encode_icon_gif(frames),
                         duration_ms=8_000, lifetime_ms=30_000)
 
 
@@ -239,6 +252,32 @@ class GameModeController:
         self.logger = logger or logging.getLogger("awtrix.game_mode")
         self.scene = PresenceScene(panel, APP_NAME, self.config.refresh_seconds, clock, self.logger)
         self.next_poll_at = 0.0
+        self._session_key: tuple[int, float | None, str] | None = None
+        self._age_seconds: float | None = None
+        self._age_mono: float | None = None
+
+    def _process_age(self, session: GameSession, now: float) -> int | None:
+        """Calibrate once from process creation, then advance with monotonic time."""
+        start = session.started_at
+        valid_start = (not isinstance(start, bool) and isinstance(start, (int, float))
+                       and math.isfinite(start) and start > 0)
+        key = (session.pid, start if valid_start else None, session.name)
+        if key != self._session_key:
+            self._session_key, self._age_seconds = key, None
+        if self._age_seconds is None:
+            wall = self.clock.time()
+            if not valid_start or not math.isfinite(wall) or start > wall:
+                self._age_mono = now
+                return None
+            self._age_seconds = wall - start
+        else:
+            delta = now - self._age_mono
+            if not math.isfinite(delta) or delta < 0:
+                self._age_seconds, self._age_mono = None, now
+                return None
+            self._age_seconds += delta
+        self._age_mono = now
+        return math.floor(self._age_seconds / 60)
 
     def tick(self) -> GameSession | None:
         now = self.clock.monotonic()
@@ -253,9 +292,14 @@ class GameModeController:
         if session is None:
             self.scene.hide()
             return None
-        minutes = max(0, int((self.clock.time() - session.started_at) // 60))
-        reading = self.gpu()
-        self.scene.show((session.pid, session.name), lambda _rev: build_payload(reading, minutes))
+        minutes = self._process_age(session, self.clock.monotonic())
+        try:
+            reading = self.gpu()
+        except Exception as error:
+            self.logger.warning('GPU reading failed: %s', type(error).__name__)
+            reading = None
+        self.scene.show(self._session_key, lambda _rev: build_payload(reading, minutes),
+                        static_build=lambda _rev: build_payload(reading, minutes, animated=False))
         return session
 
 

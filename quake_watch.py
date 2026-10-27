@@ -4,12 +4,11 @@ Alert-only.  When the USGS reports a quake within range, the page appears for a
 window that grows with magnitude, then removes itself.  Most days it never
 appears at all.
 
-    icon   the magnitude, "3.4", coloured by size and shaking now and then --
-           harder for a bigger quake
-    lane   how far away it is, "26 MI", never scrolling
+    icon   magnitude-colored expanding rings
+    lane   magnitude and distance in two held rows; one proximity rail
 
-Both numbers would not fit the 23px lane beside an icon, so the magnitude
-became the icon.  The full description (place, direction, age) goes to the log.
+Distance is measured from the configured origin. The full description (place,
+direction and age) goes to the log. A still fallback preserves both readings.
 
 Data is the USGS FDSN event service over HTTPS -- public, keyless, and the
 same feed the USGS "Latest Earthquakes" map uses.
@@ -25,8 +24,9 @@ from typing import Any, Callable, Iterable
 
 from panel_scene import PresenceScene, encode_icon_gif, https_get, lane_payload, run_scene
 from visual_system import (
-    FONT_3X5, LANE_WIDTH, LANE_X0, LEVEL_COLORS, PEARL, RGB, Frame,
-    gamma_lerp, measure_text, new_frame, put_pixel, render_glance_lane, scale_color,
+    LANE_WIDTH, LEVEL_COLORS, PEARL, RGB, Frame,
+    gamma_lerp, measure_text, measure_text_3x3, new_frame, put_pixel,
+    render_split_lane, draw_level_rail, MIST, scale_color,
 )
 
 APP_NAME = "quake0"
@@ -54,7 +54,18 @@ def haversine_km(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
     p1, p2 = math.radians(lat1), math.radians(lat2)
     dp, dl = p2 - p1, math.radians(lon2 - lon1)
     a = math.sin(dp / 2) ** 2 + math.cos(p1) * math.cos(p2) * math.sin(dl / 2) ** 2
-    return 6371.0 * 2 * math.asin(math.sqrt(a))
+    return 6371.0 * 2 * math.asin(math.sqrt(max(0.0, min(1.0, a))))
+
+
+def validate_home(home):
+    try:
+        lat, lon = home
+        if (any(isinstance(v, bool) or not isinstance(v, (int, float)) or not math.isfinite(v)
+                for v in (lat, lon)) or not -90 <= lat <= 90 or not -180 <= lon <= 180):
+            raise ValueError()
+        return float(lat), float(lon)
+    except (TypeError, ValueError):
+        raise ValueError('Earthquake origin requires finite latitude/longitude in range') from None
 
 
 def bearing_deg(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
@@ -70,21 +81,38 @@ def compass(deg: float) -> str:
 
 
 def parse_quakes(document: dict[str, Any]) -> list[Quake]:
+    if not isinstance(document, dict) or not isinstance(document.get('features'), list):
+        raise ValueError('Earthquake feed must contain a features list')
     quakes = []
-    for feature in document.get("features", []) or []:
+    for feature in document['features']:
+        if not isinstance(feature, dict):
+            continue
         props = feature.get("properties") or {}
-        coords = (feature.get("geometry") or {}).get("coordinates") or []
+        geometry = feature.get('geometry') or {}
+        if not isinstance(props, dict) or not isinstance(geometry, dict):
+            continue
+        coords = geometry.get('coordinates') or []
         if props.get("type", "earthquake") != "earthquake":
             continue  # quarry blasts and explosions are in the same feed
-        if not isinstance(props.get("mag"), (int, float)) or len(coords) < 2:
+        if not isinstance(coords, (list, tuple)) or len(coords) < 2:
+            continue
+        try:
+            magnitude, stamp = props.get('mag'), props.get('time')
+            depth = coords[2] if len(coords) > 2 and coords[2] is not None else 0
+            if any(isinstance(v, bool) or not isinstance(v, (int, float)) or not math.isfinite(v)
+                   for v in (magnitude, stamp, depth)) or stamp <= 0:
+                continue
+            lat, lon = validate_home((coords[1], coords[0]))
+            identifier = feature.get('id')
+            if not isinstance(identifier, str) or not identifier.strip():
+                continue
+        except (ValueError, TypeError, OverflowError):
             continue
         quakes.append(Quake(
-            event_id=str(feature.get("id", "")),
-            magnitude=float(props["mag"]),
+            event_id=identifier,
+            magnitude=float(magnitude),
             place=str(props.get("place") or ""),
-            time_ms=int(props.get("time") or 0),
-            lon=float(coords[0]), lat=float(coords[1]),
-            depth_km=float(coords[2]) if len(coords) > 2 and coords[2] is not None else 0.0,
+            time_ms=int(stamp), lon=lon, lat=lat, depth_km=float(depth),
         ))
     return quakes
 
@@ -150,12 +178,16 @@ def distance_miles(q: Quake, home: tuple[float, float] = (HOME_LAT, HOME_LON)) -
     return round(haversine_km(home[0], home[1], q.lat, q.lon) / KM_PER_MILE)
 
 
-def distance_label(q: Quake) -> str:
-    miles = distance_miles(q)
+def distance_label(q: Quake, home: tuple[float, float] = (HOME_LAT, HOME_LON)) -> str:
+    miles = distance_miles(q, home)
     label = f"{miles} MI"
     # Three-digit distances only happen with a radius beyond ~160 km; drop the
     # space rather than scroll or clip.
-    return label if measure_text(label) <= LANE_WIDTH else f"{miles}MI"
+    for candidate in (label, f'{miles}MI'):
+        if max(measure_text(candidate), measure_text_3x3(candidate)) <= LANE_WIDTH:
+            return candidate
+    thousands = miles / 1000
+    return f'{thousands:.1f}KMI' if thousands < 10 else f'{round(thousands)}KMI'
 
 
 # ---------------------------------------------------------------- Icon
@@ -176,7 +208,10 @@ def ring_count(magnitude: float) -> int:
 
 
 def magnitude_text(magnitude: float) -> str:
-    return f"M{min(magnitude, 9.9):.1f}"
+    if isinstance(magnitude, bool) or not math.isfinite(magnitude):
+        raise ValueError('Magnitude must be finite')
+    label = f'M{magnitude:.1f}'
+    return label if measure_text_3x3(label) <= LANE_WIDTH else 'M?'
 
 
 def icon_frames(magnitude: float) -> list[Frame]:
@@ -204,25 +239,28 @@ def icon_frames(magnitude: float) -> list[Frame]:
 def closeness(q: Quake, radius_km: float = DEFAULT_RADIUS_KM,
               home: tuple[float, float] = (HOME_LAT, HOME_LON)) -> float:
     """1.0 at home, 0.0 at the edge of the watched circle."""
+    if isinstance(radius_km, bool) or not math.isfinite(radius_km) or radius_km <= 0:
+        raise ValueError('Earthquake radius must be finite and positive')
+    home = validate_home(home)
     km = haversine_km(home[0], home[1], q.lat, q.lon)
     return max(0.0, min(1.0, 1.0 - km / radius_km))
 
 
-def render_lane(q: Quake, radius_km: float = DEFAULT_RADIUS_KM) -> Frame:
-    # Calm glance: the icon is the dynamic seismograph; the lane shows the
-    # magnitude, e.g. "M3.4", centered in PEARL.  The meter on row 7 fills
-    # as the quake gets closer, with a PEARL needle on row 6 indicating proximity.
-    c = closeness(q, radius_km)
-    frame = render_glance_lane(magnitude_text(q.magnitude), meter=c,
-                              level=magnitude_level(q.magnitude))
-    fill = max(1, min(LANE_WIDTH, round(c * LANE_WIDTH)))
-    needle_x = LANE_X0 + fill - 1
-    put_pixel(frame, needle_x, 6, PEARL)
+def render_lane(q: Quake, radius_km: float = DEFAULT_RADIUS_KM, *,
+                home: tuple[float, float] = (HOME_LAT, HOME_LON)) -> Frame:
+    c = closeness(q, radius_km, home)
+    frame = render_split_lane(magnitude_text(q.magnitude), distance_label(q, home), bottom_color=MIST)
+    # Row 6 belongs to distance typography; only row 7 carries proximity.
+    draw_level_rail(frame, c, magnitude_level(q.magnitude))
     return frame
 
 
-def build_payload(q: Quake, radius_km: float = DEFAULT_RADIUS_KM) -> dict[str, Any]:
-    return lane_payload(render_lane(q, radius_km), encode_icon_gif(icon_frames(q.magnitude)),
+def build_payload(q: Quake, radius_km: float = DEFAULT_RADIUS_KM, *,
+                  home: tuple[float, float] = (HOME_LAT, HOME_LON), animated: bool = True) -> dict[str, Any]:
+    frames = icon_frames(q.magnitude)
+    if not animated:
+        frames = [frames[3]]
+    return lane_payload(render_lane(q, radius_km, home=home), encode_icon_gif(frames),
                         duration_ms=8_000, lifetime_ms=180_000)
 
 
@@ -235,6 +273,13 @@ class QuakeWatchConfig:
     poll_seconds: float = 60.0
     lat: float = HOME_LAT
     lon: float = HOME_LON
+
+    def __post_init__(self):
+        validate_home((self.lat, self.lon))
+        for name in ('radius_km', 'poll_seconds'):
+            value = getattr(self, name)
+            if isinstance(value, bool) or not math.isfinite(value) or value <= 0:
+                raise ValueError(name + ' must be finite and positive')
 
 
 def fetch_feed(config: QuakeWatchConfig) -> list[Quake]:
@@ -276,8 +321,11 @@ class QuakeWatchController:
         if quake is None:
             self.scene.hide()
             return None
-        self.scene.show((quake.event_id, describe(quake, now_ms)),
-                        lambda _rev: build_payload(quake, self.config.radius_km))
+        home = (self.config.lat, self.config.lon)
+        self.scene.show((quake.event_id, describe(quake, now_ms, home)),
+                        lambda _rev: build_payload(quake, self.config.radius_km, home=home),
+                        static_build=lambda _rev: build_payload(quake, self.config.radius_km,
+                                                               home=home, animated=False))
         return quake
 
 

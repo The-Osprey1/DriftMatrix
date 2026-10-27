@@ -44,8 +44,8 @@ class LaneTests(unittest.TestCase):
         hot = gm.render_lane(gm.GpuReading(90, 100), 60)
         lit = vs.meter_fill
         self.assertLess(lit(cool), lit(hot))
-        # Row 0 is no longer a second meter.
-        self.assertTrue(all(cool[0][x] == (0, 0, 0) for x in range(9, 32)))
+        # The two text rows share a blank separator; only row 7 is a meter.
+        self.assertTrue(all(cool[3][x] == (0, 0, 0) for x in range(9, 32)))
         self.assertEqual(vs.read_meter(hot)[1], gm.CORAL)
 
     def test_missing_gpu_still_renders(self):

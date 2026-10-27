@@ -229,7 +229,7 @@ class PresenceScene:
     def _now(self) -> float:
         return getattr(self.clock, "monotonic")()
 
-    def show(self, key: Any, build: Any) -> bool:
+    def show(self, key: Any, build: Any, *, static_build: Any = None) -> bool:
         now = self._now()
         changed = key != self.key
         due = self.last_push_at is None or now - self.last_push_at >= self.refresh_seconds
@@ -238,7 +238,9 @@ class PresenceScene:
         if changed:
             self.revision += 1
         try:
-            self.panel.push_app(self.app_name, build(self.revision))
+            payload = build(self.revision)
+            safety = {} if static_build is None else {'static_payload': static_build(self.revision)}
+            self.panel.push_app(self.app_name, payload, **safety)
         except Exception as err:  # noqa: BLE001
             self.logger.warning("Failed to push %s: %s", self.app_name, err)
             return False
@@ -263,7 +265,7 @@ class PresenceScene:
 class PrintPanel:
     """Dry-run stand-in for PanelClient: reports what would be sent."""
 
-    def push_app(self, name: str, payload: Mapping[str, Any]) -> None:
+    def push_app(self, name: str, payload: Mapping[str, Any], *, static_payload=None) -> None:
         size = len(json.dumps(payload, separators=(",", ":")))
         print(f"PUSH {name} ({size} B): {payload.get('text', '<bitmap lane>')}")
 

@@ -32,7 +32,7 @@ jobs for firmware compatibility passed. These are observations, not long-term pr
 | Desk Companion | Cleaner round silhouette, 120 ms blink, unchanged 1.92 s cycle and five mood props. | User visual review, then staged host adoption and physical appearance check. |
 | AQI | Existing six category designs retained as reference. Live service is explicitly static. | Review category legibility, severity pacing and whether animation should be enabled. |
 | Moon / Ocean | Installed sources preserved. Ocean 3.0 adds visible-time lifecycle, a clearer visitor and compact caches. Moon 2.2 adds width-aware information, complete percentages and bounded camera motion. See `OCEAN_OVERHAUL.md` / `MOON_OVERHAUL.md`. | Exact-identity legacy Ocean rollback support, user visual review, then guarded physical memory/FPS and appearance checks for both candidates. |
-| Now Playing / information apps | Calendar holds ETA/title cards; Focus and reminders use truthful long-duration labels. A 30-scene payload-exact information corpus covers eight families. See `INFORMATION_OVERHAUL.md`. | Review Now Playing title/progress, earthquake distance context and Game Mode session information; then visual/physical adoption gates. |
+| Now Playing / information apps | Calendar holds ETA/title cards; Focus and reminders use truthful long-duration labels. Earthquake distance and game-process age now stay visible beside magnitude/temperature, with configured origins and still fallbacks. See `INFORMATION_OVERHAUL.md` / `ALERT_CONTEXT_OVERHAUL.md`. | Review Now Playing title/progress, then visual/physical adoption gates. |
 | Everyday controls | Canonical-aware `driftmatrix controls`, custom Focus/snooze durations, persistent feedback and local service overview are implemented. Focus commits state before queue acknowledgement. PR #10 passed 6/6 CI. See `docs/desk-controls.md`. | User review, then guarded host-release adoption. Screen-reader acceptance is unverified. |
 
 ## First visual pass
@@ -103,5 +103,15 @@ remain follow-ups rather than being hidden behind the reference artwork label.
 The NET unit/capping defect is corrected in the staged network candidate, including
 the real sender's update detector and supervised settings. Fourteen actual-payload
 comparisons cover large rates and competing hardware alerts. The full suite passes
-2,918 tests. This leaves earthquake/gaming context, Now Playing review, resident
-rollback support and the visual/physical adoption gates active.
+2,918 tests. Earthquake/gaming context is addressed in the follow-up below;
+Now Playing review, resident rollback support and visual/physical adoption remain.
+
+## Earthquake and gaming context follow-up
+
+Two held rows restore explicit earthquake distance and game-process age. The
+earthquake origin reaches both the feed query and all display/log calculations;
+game age advances monotonically after initial process observation. Both pages
+now provide real still fallbacks to the existing guarded transport. Thirteen
+actual-payload comparisons cover ordinary, missing-data and formatting states.
+See `ALERT_CONTEXT_OVERHAUL.md`. Physical glyph legibility and candidate adoption
+remain open acceptance items.
