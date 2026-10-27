@@ -31,7 +31,7 @@ jobs for firmware compatibility passed. These are observations, not long-term pr
 | PC stats | Six distinct GPU rotor poses with a consistent loop seam; existing numeric lane preserved. | Review CPU/RAM/combined/NET identity and readability in their actual alert states. |
 | Desk Companion | Cleaner round silhouette, 120 ms blink, unchanged 1.92 s cycle and five mood props. | User visual review, then staged host adoption and physical appearance check. |
 | AQI | Existing six category designs retained as reference. Live service is explicitly static. | Review category legibility, severity pacing and whether animation should be enabled. |
-| Moon / Ocean | Existing resident sources preserved; earlier memory pressure makes arbitrary additions unsuitable. | Frame/timing and memory review, then substantive scene improvements where evidence warrants them. |
+| Moon / Ocean | Existing installed sources preserved. Ocean 3.0 candidate adds visible-time lifecycle, a clearer first visitor and compact exact-color caches. See `OCEAN_OVERHAUL.md`. | Moon review; exact-identity legacy Ocean rollback support; then guarded physical memory/FPS and appearance checks. |
 | Now Playing / information apps | Existing Now Playing behavior is the visual quality reference. | Review title/progress behavior, Focus, reminders, calendar and alert layouts against that standard. |
 | Everyday controls | Audit found missing installed Desk Controls modules, legacy-only launch/config assumptions and weak pending-command feedback. | Complete the unified controls/QoL pass. The early local draft is preserved separately and is not part of this visual change. |
 
@@ -65,3 +65,11 @@ physical LEDs and post-deployment stability have not been verified for this pass
 
 No live scripts, configuration or scheduled tasks were changed by this visual pass.
 The overall overhaul remains active; this first batch does not complete it.
+
+## Ocean candidate follow-up
+
+`ocean-v3.ax` is a separate candidate; the installed-source reference `ocean.ax`
+is unchanged. The source-executed 30-second preview and lifecycle tests are in
+`OCEAN_OVERHAUL.md`. This follow-up improves encounter visibility and hidden-time
+behavior without adding more scene elements. Its actual total VM heap use,
+real device heap/FPS and physical acceptance still require verification.
