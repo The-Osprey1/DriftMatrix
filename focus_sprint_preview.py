@@ -28,7 +28,7 @@ import json
 import math
 from typing import Any, Iterable, Mapping, Sequence
 
-from visual_system import LANE_X0 as GLANCE_LANE_X0, gamma_lerp, render_glance_lane
+from visual_system import LANE_X0 as GLANCE_LANE_X0, gamma_lerp, render_glance_lane, format_remaining_time
 from PIL import Image
 
 
@@ -171,6 +171,8 @@ FONT_3X5: dict[str, tuple[str, ...]] = {
     "E": ("111", "100", "110", "100", "111"),
     "R": ("110", "101", "110", "101", "101"),
     "Y": ("101", "101", "010", "010", "010"),
+    "H": ("101", "101", "111", "101", "101"),
+    "+": ("000", "010", "111", "010", "000"),
 }
 
 PIP_X = (5, 9, 13, 17)
@@ -476,13 +478,8 @@ def draw_text(frame: Frame, text: str, x0: int, y0: int, color: RGB) -> None:
 
 
 def format_countdown(remaining_seconds: Any) -> str:
-    """Return clamped ``MM:SS``, ceiling positive fractions truthfully."""
-
-    remaining = _finite_number(remaining_seconds, "remaining")
-    display_seconds = 0 if remaining <= 0 else int(math.ceil(remaining))
-    display_seconds = min(99 * 60 + 59, display_seconds)
-    minutes, seconds = divmod(display_seconds, 60)
-    return f"{minutes:02d}:{seconds:02d}"
+    """Return MM:SS, switching to explicit hours for long custom sessions."""
+    return format_remaining_time(_finite_number(remaining_seconds, "remaining"))
 
 
 def remaining_rail_pixels(remaining: Any, total: Any) -> int:

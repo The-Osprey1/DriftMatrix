@@ -146,7 +146,7 @@ class LaneGeometryTests(unittest.TestCase):
             60: "01:00",
             1_500: "25:00",
             99 * 60 + 59: "99:59",
-            99 * 60 + 100: "99:59",
+            99 * 60 + 100: "1H41",
         }
         for remaining, label in expected.items():
             with self.subTest(remaining=remaining):

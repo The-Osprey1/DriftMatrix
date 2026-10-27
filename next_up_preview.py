@@ -1,21 +1,13 @@
-"""Exact 32x8 art and payloads for the AWTRIX ``Next Up`` page.
+"""Exact 32x8 art and payloads for AWTRIX Next Up.
 
-The panel is split into two stable regions::
+The current payload holds ETA and compact event identity for 2.4 seconds each,
+with an 8x8 calendar, black x8 gutter, and unchanged countdown rail. An exact
+shared palette keeps its full-width GIF below 1KB. Static safety mode retains
+the 8x8 still calendar and bitmap ETA lane. Aliases reach both representations.
 
-    x=0..7   familiar calendar with one connected orbiting time bead
-    x=8      true-black safety gutter
-    x=9..31  proportional 3x5 ETA and compact event title
-
-Short messages are centered and never move.  A longer message is rendered as
-a local, seamless GIF marquee: exactly one physical column per 120 ms, with a
-gamma-aware edge fade.  The cyclic stream has only a six-column gap, so the
-23-column viewport never becomes blank.  Semantic shortening bounds a complete
-pass to at most 64 frames and the final serialized pushed-app body to less than
-8192 bytes.
-
-This module deliberately accepts strings, mappings, or attribute-bearing
-objects.  It has no dependency on the calendar/source layer, which keeps the
-visual contract usable by both previews and the Utility Hub controller.
+The older build_animation/panel_frames APIs remain a separate marquee model;
+they are not previews of build_payload. Use information_preview.py to decode
+the actual current GIF and bitmap payloads, including safety variants.
 """
 
 from __future__ import annotations
@@ -31,7 +23,7 @@ import unicodedata
 from typing import Any, Iterable, Mapping, Sequence
 
 from panel_scene import encode_icon_gif, lane_payload
-from visual_system import gamma_lerp, glance_text_width, render_glance_lane, scale_color
+from visual_system import gamma_lerp, glance_text_width, render_glance_lane, scale_color, measure_text
 from PIL import Image
 
 
@@ -860,6 +852,62 @@ GLANCE_LEAD_MINUTES = 60
 
 
 MIN_LABEL_LETTERS = 3
+CARD_FRAME_MS = 480
+
+
+def card_title(title: str) -> str:
+    """Use the actual lane font width; aliases and abbreviations keep identity."""
+    budget = LANE_WIDTH
+    label = shorten_title(title, budget)
+    while measure_text(label) > LANE_WIDTH and budget > 1:
+        budget -= 1
+        label = shorten_title(title, budget)
+    return label
+
+
+def calendar_cards(visual: VisualEvent) -> list[Frame]:
+    """Two held cards with a continuous ten-position calendar orbit.
+
+    Time and identity each get 2.4 seconds. NOW keeps a still calendar icon.
+    The same remaining-time rail is carried through both cards.
+    """
+    label = card_title(visual.title)
+    meter = None if visual.minutes_until is None else max(
+        0.0, min(1.0, visual.minutes_until / GLANCE_LEAD_MINUTES))
+    output = []
+    count = len(ORBIT_PATH)
+    for phase in range(count):
+        text = visual.eta if phase < count // 2 else label
+        frame = render_glance_lane(text, meter=meter, level=GLANCE_LEVELS[visual.urgency])
+        icon = calendar_frame(visual.urgency, phase, count)
+        for y in range(HEIGHT):
+            frame[y][:ICON_WIDTH] = icon[y]
+        output.append(frame)
+    return output
+
+
+def _encode_cards(frames: Sequence[Frame]) -> bytes:
+    # A shared exact palette allows GIF delta rectangles, avoiding a full
+    # local color table per frame. No quantization or loss of shading.
+    colors = list(dict.fromkeys(pixel for frame in frames for row in frame for pixel in row))
+    if len(colors) > 256:
+        raise ValueError('Calendar cards exceed the exact GIF palette')
+    palette = bytes(channel for color in colors for channel in color)
+    palette += bytes(3 * (2 ** max(1, (len(colors) - 1).bit_length()) - len(colors)))
+    indices = {color: index for index, color in enumerate(colors)}
+    images = []
+    for frame in frames:
+        image = Image.new('P', (WIDTH, HEIGHT))
+        image.putpalette(palette)
+        image.putdata([indices[pixel] for row in frame for pixel in row])
+        images.append(image)
+    stream = BytesIO()
+    images[0].save(stream, format='GIF', save_all=True, append_images=images[1:],
+                   duration=CARD_FRAME_MS, loop=0, disposal=1, optimize=False, palette=palette)
+    encoded = stream.getvalue()
+    if len(encoded) > 1024:
+        raise ValueError('Calendar cards exceed the 1KB image budget')
+    return encoded
 
 
 def build_payload(
@@ -873,30 +921,30 @@ def build_payload(
     duration_ms: int = PAGE_DURATION_MS,
     lifetime_ms: int = LIFETIME_MS,
 ) -> dict[str, Any]:
-    """Build the calm-glance Next Up page (2026-09-26).
+    """Show held ETA/title cards; safety mode retains the still ETA lane.
 
-    The 8x8 calendar keeps its orbiting bead and urgency colour; the lane is
-    the panel-wide layout -- time until the event in white, the title as a
-    grey label only when it fits beside it (it rarely does; nothing scrolls
-    any more), and the meter counting down the last hour.
-
-    This replaces the full-width scrolling-title GIF, which also cost the
-    panel's scarce contiguous heap.  The ``build_animation`` family below
-    stays for the preview sheets.
+    Cards use a bounded 32x8 GIF with exact shared palette and delta frames.
+    No marquee or extra app slot is needed. The legacy build_animation API
+    remains a separate marquee model; payload-exact review decodes this GIF.
     """
 
     if int(duration_ms) <= 0 or int(lifetime_ms) <= 0:
         raise ValueError("duration_ms and lifetime_ms must be positive")
     visual = coerce_event(event, title=title, eta=eta, minutes_until=minutes_until, urgency=urgency)
-    count = 1 if (not animated or visual.urgency is Urgency.NOW) else len(ORBIT_PATH)
-    frames = []
-    for phase in range(count):
-        icon = calendar_frame(visual.urgency, phase, count)
-        frame = new_frame()
-        for y in range(HEIGHT):
-            frame[y][:ICON_WIDTH] = icon[y]
-        frames.append(frame)
-    gif = encode_icon_gif(frames, beat_ms=_short_frame_duration(visual.urgency))
+    if animated:
+        payload = {
+            'icon': base64.b64encode(_encode_cards(calendar_cards(visual))).decode('ascii'),
+            'iconMode': 'fixed', 'iconOffsetX': 0, 'draw': [],
+            'backgroundColor': '#000000', 'durationMs': max(int(duration_ms), CARD_FRAME_MS * len(ORBIT_PATH)),
+            'lifetimeMs': int(lifetime_ms), 'lifetimeExpiry': 'remove',
+        }
+        if int(lifetime_ms) < CARD_FRAME_MS * len(ORBIT_PATH):
+            raise ValueError('lifetime_ms must cover one calendar card cycle')
+        if serialized_size(payload) >= 2048:
+            raise ValueError('Calendar cards exceed the 2KB payload budget')
+        return payload
+    icon = calendar_frame(visual.urgency, 0, 1)
+    gif = encode_icon_gif([icon], beat_ms=_short_frame_duration(visual.urgency))
 
     label = None
     room = LANE_WIDTH - 4 - glance_text_width(visual.eta)

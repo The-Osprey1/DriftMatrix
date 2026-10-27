@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import unittest
+import json
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
@@ -38,7 +39,9 @@ class AnimationHeapGateTests(unittest.TestCase):
 
     def test_the_real_next_up_payload_is_sized_from_the_real_artwork(self) -> None:
         size = canary.next_up_animated_bytes()
-        self.assertGreater(size, 1_000)
+        payload = canary.nextup_art.build_payload(title='CANARY', minutes_until=14,
+            urgency=canary.nextup_art.Urgency.SOON, animated=True, lifetime_ms=60_000)
+        self.assertEqual(size, len(json.dumps(payload).encode('utf-8')))
         self.assertEqual(
             canary.required_block_for_animation(size),
             int(size * canary.ANIMATION_BLOCK_RATIO),

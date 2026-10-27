@@ -131,8 +131,7 @@ def render(reminder: Reminder, now: float, *, show_label: bool = False):
             visual.put_pixel(frame, x, y, visual.GOLD)
     else:
         visual.put_pixel(frame, 2, 1, visual.PEARL)
-    minutes = math.ceil(remaining / 60)
-    timer = f"{minutes}M" if minutes < 100 else f"{math.ceil(minutes / 60)}H"
+    timer = visual.format_remaining_time(remaining, show_seconds=False)
     # Calm glance: the time left in white with the reminder's name as a grey
     # label when both fit (TEA 5M); otherwise the page alternates between
     # them every ten seconds.  Once due, the name alone.  The meter drains
