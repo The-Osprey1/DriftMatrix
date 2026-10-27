@@ -1,0 +1,28 @@
+{
+  "baseline_revision": "42fbc98f8245c32880980f6be2aacdd7903c879d",
+  "baseline_sha256": "f81afb309d7272d2359c2ee263773ac588321d7636242515fe46a0edecdcdaf1",
+  "cases": 13,
+  "max_wire_bytes": 1640,
+  "firmware": "1.2.2",
+  "changed": [
+    "quake-near",
+    "quake-home",
+    "quake-edge",
+    "quake-custom",
+    "quake-far",
+    "quake-magnitude",
+    "game-short",
+    "game-long",
+    "game-missing",
+    "game-age",
+    "game-hot",
+    "game-new",
+    "game-extended"
+  ],
+  "source_sha256_utf8_lf": {
+    "quake_watch.py": "251a64f66fb6648b22423338d16de3812fbdf65672bbaa3ba9730dd3d6ebd4fa",
+    "game_mode.py": "96c60211b9cd00f97772884299d90d9fb3c58bdaae2eda7b9419eb2b6512c25a",
+    "panel_scene.py": "877075a15d56178ac91df566e04ef2604bc1501f8d45f64e437f634311a19f8d",
+    "utility_hub.py": "33440352ff341e6201cd27e76b5d4d8a73305e249bbfed211db7905b39376e0a"
+  }
+}
