@@ -165,6 +165,8 @@ class QuakesHubConfig:
     enabled: bool = False
     radius_km: float = 150.0
     min_magnitude: float = 2.5
+    latitude: float = quake_watch.HOME_LAT
+    longitude: float = quake_watch.HOME_LON
 
 
 @dataclass(frozen=True)
@@ -542,11 +544,18 @@ def config_from_mapping(value: Mapping[str, Any]) -> HubConfig:
     )
     quakes_raw = _mapping(value.get("quakes", {}), "quakes")
     quakes_defaults = QuakesHubConfig()
+    if ("latitude" in quakes_raw) != ("longitude" in quakes_raw):
+        raise ValueError("quakes.latitude and quakes.longitude must be supplied together")
+    quake_home = quake_watch.validate_home((
+        quakes_raw.get("latitude", quakes_defaults.latitude),
+        quakes_raw.get("longitude", quakes_defaults.longitude),
+    ))
     quakes = QuakesHubConfig(
         enabled=bool(quakes_raw.get("enabled", quakes_defaults.enabled)),
         radius_km=_positive(quakes_raw.get("radius_km", quakes_defaults.radius_km), "quakes.radius_km"),
         min_magnitude=_positive(
             quakes_raw.get("min_magnitude", quakes_defaults.min_magnitude), "quakes.min_magnitude"),
+        latitude=quake_home[0], longitude=quake_home[1],
     )
     game_raw = _mapping(value.get("game_mode", {}), "game_mode")
     extra = game_raw.get("extra_games", [])
@@ -1365,6 +1374,7 @@ def run_hub(config: HubConfig, stop_event=None, *, timezone_name=None) -> None:
         if config.quakes.enabled:
             cfg = quake_watch.QuakeWatchConfig(
                 radius_km=config.quakes.radius_km, min_magnitude=config.quakes.min_magnitude,
+                lat=config.quakes.latitude, lon=config.quakes.longitude,
             )
             services.append(quake_watch.QuakeWatchController(panel, cfg, logger=logger.getChild("quakes")))
             names.append("Quake Watch")
