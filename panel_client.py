@@ -480,15 +480,25 @@ class PanelClient:
         *,
         operation: str,
         accepted_statuses: tuple[int, ...] = (),
+        before_send: Callable[[Any], None] | None = None,
         **kwargs: Any,
     ) -> Any:
+        """Run an optional precondition after pacing and gate entry, before HTTP.
+
+        The callback sees the actual gate record and may refuse a best-effort
+        gate outcome. Rejection sends no HTTP request or transport-failure count.
+        """
         op, app = panel_gate.classify(method, path, kwargs.get("json"))
         body = kwargs.get("json", kwargs.get("data"))
         with self._state_lock:
             self._wait_for_mutation_slot()
             request = getattr(self.session, method.lower())
+            dispatched = False
             try:
                 with panel_gate.mutation(self.source, op, app, body=body) as gate:
+                    if before_send is not None:
+                        before_send(gate)
+                    dispatched = True
                     response = request(
                         self._url(path),
                         timeout=self.policy.request_timeout_seconds,
@@ -496,6 +506,8 @@ class PanelClient:
                     )
                     gate.observe(response)
             except requests.RequestException as error:
+                if not dispatched:
+                    raise  # A failed precondition did not attempt this mutation.
                 self._record_mutation_failure()
                 raise PanelTransportError(
                     f"{operation} unreachable: {type(error).__name__}"
@@ -713,11 +725,13 @@ class PanelClient:
         window: unknown reset reasons still take the conservative path.
         """
 
-    def reboot(self) -> Any:
+    def reboot(self, *, before_send: Callable[[Any], None] | None = None) -> Any:
         """Ask the panel to restart (about nine seconds to come back)."""
 
         self.expect_reboot()
-        return self._mutate("post", REBOOT_PATH, operation="reboot")
+        if before_send is None:
+            return self._mutate("post", REBOOT_PATH, operation="reboot")
+        return self._mutate("post", REBOOT_PATH, operation="reboot", before_send=before_send)
 
     def call_with_retry(self, operation: Callable[[], T], *, attempts: int = 3) -> T:
         return retry_call(

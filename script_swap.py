@@ -24,20 +24,23 @@ Why this is a procedure and not one PUT (CLAUDE.md, "Panel memory")
   with less room than an install (:func:`rollback_block`, max(3.0x, 30 KB)):
   an OOM reply there is fine, and the verification boot compiles it.
 * ``DELETE /apps/{name}`` removes scripts too, so ``origin`` is checked to be
-  ``script`` immediately before every delete.  Identity is ``meta.version``
-  from ``GET /apps``, never a source comparison.
+  ``script`` immediately before every delete. Versioned identity uses
+  ``meta.version`` from ``GET /apps``. Explicit ``--rollback-version unversioned``
+  additionally requires full original/upload hashes and fresh exact source proof
+  under the held mutation gate before every write; see LEGACY_SCRIPT_IDENTITY.md.
 * Every write goes through :class:`panel_client.PanelClient` with source
   ``install``, so it is serialized with the other senders by ``panel_gate``
   and journaled in ``panel_events.jsonl``.  A real swap refuses to run with
   the gate off (``AWTRIX_PANEL_GATE=0`` or ``panel_gate.off``) unless
-  ``--allow-ungated``, and holds ``script_swap.lock`` beside its report so
+  ``--allow-ungated`` (never permitted for unversioned identity), and holds ``script_swap.lock`` beside its report so
   only one swap runs at a time.
 
 Procedure
 ---------
-0. Preflight, no writes: both source files carry the expected ``# @version``
+0. Preflight, no writes: source files carry the expected ``# @version``
    (and, with ``--expect-sha256``/``--rollback-sha256``, minify to the pinned
-   bytes); the panel answers and runs the expected firmware; the target is
+   bytes), or the explicit unversioned rollback has two complete hash pins;
+   the panel answers and runs the expected firmware; the target is
    present, ``origin`` script, at the old version with no error (already at
    the new version: exit 0); no other script reports an error; this boot's
    log has its ``ntp:`` line; with ``--require-dark`` the matrix is off (and
@@ -124,6 +127,7 @@ import math
 import os
 from pathlib import Path
 import re
+import shlex
 import sys
 from typing import Any, Callable, Mapping
 from urllib.parse import quote
@@ -330,6 +334,8 @@ class ReadOnlySession:
 
 # --------------------------------------------------------------- sources
 
+UNVERSIONED = "unversioned"
+
 
 @dataclass(frozen=True)
 class SourceInfo:
@@ -343,15 +349,18 @@ class SourceInfo:
     required_block: int
     rollback_block: int = 0
     warnings: tuple[str, ...] = ()
+    unversioned: bool = False
+    installed_sha256: str | None = None
+    installed_representation: str | None = None
 
     @property
     def size(self) -> int:
         return len(self.body)
 
     def summary(self) -> dict[str, Any]:
-        return {
+        result = {
             "path": self.path,
-            "version": self.version,
+            "version": None if self.unversioned else self.version,
             "name": self.name,
             "raw_bytes": self.raw_bytes,
             "bytes": self.size,
@@ -359,6 +368,12 @@ class SourceInfo:
             "required_block": self.required_block,
             "rollback_block": self.rollback_block,
         }
+        if self.unversioned:
+            result["identity"] = {"mode": "unversioned-sha256",
+                                  "installed_sha256": self.installed_sha256,
+                                  "installed_representation": self.installed_representation,
+                                  "upload_sha256": self.sha256}
+        return result
 
 
 def parse_header(text: str) -> dict[str, str]:
@@ -394,7 +409,15 @@ def resolve_source(value: str | Path) -> Path:
     return beside if beside.exists() else path
 
 
-def prepare_source(path: Path, expected_version: str, label: str) -> SourceInfo:
+def full_sha256(pin: str | None, flag: str) -> str:
+    value = pin.strip().lower() if isinstance(pin, str) else ''
+    if not re.fullmatch(r'[0-9a-f]{64}', value):
+        raise SwapAbort(f"{flag} requires the complete 64-hex SHA-256 for an unversioned rollback")
+    return value
+
+
+def prepare_source(path: Path, expected_version: str, label: str, *,
+                   installed_sha256: str | None = None, upload_pin: str | None = None) -> SourceInfo:
     """Read, minify and check one source; abort on anything that would mislead."""
     try:
         raw = Path(path).read_bytes()
@@ -408,7 +431,28 @@ def prepare_source(path: Path, expected_version: str, label: str) -> SourceInfo:
     body = minified.encode("utf-8")
     meta = parse_header(minified)
     version = meta.get("version")
-    if version != expected_version:
+    legacy = expected_version == UNVERSIONED
+    representation = None
+    if legacy:
+        if label != 'rollback':
+            raise SwapAbort('The new source must have a real # @version; unversioned is rollback-only')
+        installed_sha256 = full_sha256(installed_sha256, '--rollback-installed-sha256')
+        upload_pin = full_sha256(upload_pin, '--rollback-sha256')
+        if text.startswith('\ufeff'):
+            raise SwapAbort('An unversioned rollback source cannot have a UTF-8 BOM hiding its header')
+        if version is not None or re.search(r'(?mi)^\s*#\s*@version\b', text):
+            raise SwapAbort('An unversioned rollback source must have no @version tag')
+        candidates = {'source-bytes': hashlib.sha256(raw).hexdigest(),
+                      'source-utf8-lf': hashlib.sha256(text.replace('\r\n', '\n').replace('\r', '\n').encode('utf-8')).hexdigest()}
+        representation = next((name for name, digest in candidates.items() if digest == installed_sha256), None)
+        if representation is None:
+            raise SwapAbort('--rollback-installed-sha256 does not match the rollback source bytes or its UTF-8 LF representation')
+        if hashlib.sha256(body).hexdigest() != upload_pin:
+            raise SwapAbort('--rollback-sha256 does not match the minified unversioned rollback body')
+        version = UNVERSIONED
+    elif installed_sha256 is not None:
+        raise SwapAbort('--rollback-installed-sha256 requires --rollback-version unversioned')
+    elif version != expected_version:
         raise SwapAbort(
             f"the {label} source {path} declares '# @version {version}', not {expected_version!r}; "
             "the panel reports identity from that header"
@@ -430,6 +474,9 @@ def prepare_source(path: Path, expected_version: str, label: str) -> SourceInfo:
         required_block=required_block(len(body)),
         rollback_block=rollback_block(len(body)),
         warnings=tuple(warnings),
+        unversioned=legacy,
+        installed_sha256=installed_sha256,
+        installed_representation=representation,
     )
 
 
@@ -892,6 +939,7 @@ class SwapOptions:
     allow_ungated: bool = False
     expect_sha256: str | None = None
     rollback_sha256: str | None = None
+    rollback_installed_sha256: str | None = None
     # False: read the report's history (to plan) but write no file.
     report_write: bool = True
     fidelity: bool = True
@@ -1085,7 +1133,65 @@ class ScriptSwap:
     def _target(self, apps: list[dict[str, Any]]) -> tuple[dict[str, Any] | None, str]:
         assert self.new is not None and self.old is not None
         app = find_app(apps, self.opts.target)
+        if self.old.unversioned and app is not None and app.get('present') is True and app.get('origin') == 'script':
+            source = self._prove_identity(app)
+            if source is self.old:
+                return app, OLD_OK if app_error(app) is None else OLD_ERROR
+            return app, NEW_OK if app_error(app) is None else NEW_ERROR
         return app, target_state(app, self.old.version, self.new.version)
+
+    def _prove_identity(self, app: Mapping[str, Any], expected: SourceInfo | None = None) -> SourceInfo:
+        """Exact HTTP bytes, never a versionless name or a previous observation."""
+        assert self.old is not None and self.old.unversioned
+        if app.get('present') is not True or app.get('origin') != 'script':
+            raise SwapError('Cannot prove source identity: target is not a confirmed script')
+        version = app_version(app)
+        source = self.old if version in (None, '') else self.new if version == self.new.version else None
+        if source is None or expected is not None and source is not expected:
+            raise SwapError(f'Cannot prove source identity: unexpected metadata version {version!r}')
+        path = SCRIPT_PATH.format(name=quote(self.opts.target, safe=''))
+        try:
+            response = self.session.get(self.client.base_url + path, timeout=self.opts.request_timeout)
+            data = bytes(response.content or b'')
+            status = int(response.status_code)
+        except requests.RequestException as error:
+            raise SwapError(f'Cannot prove source identity: {type(error).__name__}') from error
+        if status != 200 or not data:
+            raise SwapError(f'Cannot prove source identity: source readback HTTP {status}, {len(data)} bytes')
+        digest = hashlib.sha256(data).hexdigest()
+        allowed = {source.sha256, source.installed_sha256} if source.unversioned else {source.sha256}
+        if digest not in allowed:
+            raise SwapError(f'Cannot prove source identity: unexpected SHA-256 {digest}')
+        proof = {'sha256': digest, 'bytes': len(data), 'version': version,
+                 'representation': 'installed-original' if source.unversioned and digest == source.installed_sha256 else 'minified-upload'}
+        self.entry['last_identity'] = proof
+        self._step('source-identity', **proof)
+        return source
+
+    def _legacy_guard(self, intent: Callable[[], None], *, expected: SourceInfo | None = None,
+                      absent: bool = False,
+                      minimum_block: int | None = None) -> Callable[[Any], None]:
+        def guard(gate):
+            if gate.gate != 'ok':
+                raise SwapError(f'Exact-identity writes require the held panel gate, got {gate.gate!r}')
+            app = find_app(self._apps(), self.opts.target)
+            missing = app is None or app.get('present') is False
+            if absent:
+                if not missing:
+                    raise SwapError('Refusing to overwrite a target that appeared before PUT')
+            elif missing:
+                raise SwapError('Target disappeared before the guarded write; re-run to inspect it')
+            else:
+                self._prove_identity(app, expected)
+            if self.opts.require_dark or minimum_block is not None:
+                device = self._device()
+                if self.opts.require_dark and device.get('matrixPower') is not False:
+                    raise SwapError('Refusing guarded write: the matrix is no longer confirmed dark')
+                block = _block(device)
+                if minimum_block is not None and (block is None or block < minimum_block):
+                    raise SwapError(f'Refusing guarded PUT: fresh largest block {block} is below {minimum_block}')
+            intent()
+        return guard
 
     # ------------------------------------------------------------ entry point
 
@@ -1174,7 +1280,11 @@ class ScriptSwap:
         if o.expect_version == o.rollback_version:
             raise SwapAbort("--expect-version and --rollback-version must differ: identity is meta.version")
         self.new = prepare_source(o.new_path, o.expect_version, "new")
-        self.old = prepare_source(o.rollback_path, o.rollback_version, "rollback")
+        self.old = prepare_source(o.rollback_path, o.rollback_version, "rollback",
+                                  installed_sha256=o.rollback_installed_sha256,
+                                  upload_pin=o.rollback_sha256)
+        if self.old.unversioned and o.allow_ungated:
+            raise SwapAbort('Unversioned exact-identity swaps cannot use --allow-ungated')
         self.entry["new"] = self.new.summary()
         self.entry["rollback"] = self.old.summary()
         check_pin(self.new, o.expect_sha256, "--expect-sha256")
@@ -1345,11 +1455,15 @@ class ScriptSwap:
         return None
 
     def _same_sources(self, entry: Mapping[str, Any]) -> bool:
-        def key(summary: Any) -> tuple[Any, Any]:
-            return (summary.get("version"), summary.get("sha256")) if isinstance(summary, Mapping) else (None, None)
-
-        return (key(entry.get("new")) == (self.new.version, self.new.sha256)
-                and key(entry.get("rollback")) == (self.old.version, self.old.sha256))
+        def key(summary: Any):
+            if not isinstance(summary, Mapping):
+                return None
+            identity = summary.get('identity')
+            contract = (tuple(identity.get(field) for field in ('mode', 'installed_sha256', 'upload_sha256'))
+                        if isinstance(identity, Mapping) else None)
+            return summary.get('version'), summary.get('sha256'), contract
+        return (key(entry.get('new')) == key(self.new.summary())
+                and key(entry.get('rollback')) == key(self.old.summary()))
 
     @staticmethod
     def _sources_text(entry: Mapping[str, Any]) -> str:
@@ -1552,12 +1666,19 @@ class ScriptSwap:
         except Exception as error:  # noqa: BLE001 - no snapshot, no write
             raise SwapAbort(f"the pre-swap snapshot failed ({type(error).__name__}: {error})") from error
         record: dict[str, Any] = {"path": str(destination)}
+        manifest = {}
         try:
             manifest = json.loads((Path(destination) / "manifest.json").read_text(encoding="utf-8"))
             backup = manifest.get("exactScriptBackups", {}).get(self.opts.target)
         except (OSError, ValueError, AttributeError):
             backup = None
+        if not isinstance(manifest, Mapping):
+            manifest = {}
         mismatch = None
+        if self.old.unversioned and (manifest.get('complete') is not True
+                                     or manifest.get('readOnlyCapture') is not True
+                                     or str(manifest.get('panel', '')).rstrip('/') != self.client.base_url):
+            raise SwapAbort('Exact-identity swap requires a complete fresh snapshot of the selected panel')
         if isinstance(backup, Mapping):
             record["target"] = {key: backup.get(key) for key in ("bytes", "sha256", "provenance")}
             # Only when the panel holds what this run takes for the old version
@@ -1568,6 +1689,22 @@ class ScriptSwap:
                             f"(panel {str(backup.get('sha256'))[:12]}, rollback {self.old.sha256[:12]}), so a "
                             f"rollback would not put back what is running; the exact installed bytes are in "
                             f"{destination}")
+        if self.old.unversioned and state != ABSENT:
+            # A repository-derived fallback is not a fresh observation of a
+            # versionless installation. Verify the actual saved bytes too.
+            expected = (self.entry.get('last_identity') or {}).get('sha256')
+            try:
+                valid = (manifest.get('complete') is True and manifest.get('readOnlyCapture') is True
+                         and isinstance(backup, Mapping) and backup.get('provenance') == 'panel'
+                         and backup.get('sourceFile') == f'{self.opts.target}.ax'
+                         and backup.get('sha256') == expected
+                         and hashlib.sha256((Path(destination) / backup['sourceFile']).read_bytes()).hexdigest() == expected)
+            except (OSError, TypeError, KeyError):
+                valid = False
+            if not valid:
+                mismatch = 'Exact-identity swap requires a complete fresh panel-provenance snapshot matching the observed source'
+            else:
+                mismatch = None  # Original and minified rollback bodies have separate pins.
         self.entry["snapshot"] = record
         self._step("snapshot", **record)
         if mismatch:
@@ -1671,27 +1808,41 @@ class ScriptSwap:
             return
         if app.get("origin") != "script":
             raise SwapError(f"refusing to DELETE {t!r}: origin is {app.get('origin')!r}, not 'script'")
-        if expect_version is not None and app_version(app) != expect_version:
+        if expect_version is not None and not self.old.unversioned and app_version(app) != expect_version:
             raise SwapError(f"refusing to DELETE {t!r}: it now reports {app_version(app)!r}, "
                             f"not {expect_version!r}")
-        self.entry["deleted"] = True
-        # Counted before the report says so: a run killed mid-request still
-        # shows that it may have written.
-        self.writes += 1
-        self._panel_state(f"DELETE {t} sent: {t} may be deleted; the other scripts keep running. "
-                          "Re-run the same command to resume.")
-        self._step("delete", version=app_version(app))
+        def intent():
+            self.entry["deleted"] = True
+            # Count immediately before sending, after any guarded precondition.
+            self.writes += 1
+            self._panel_state(f"DELETE {t} sent: {t} may be deleted; the other scripts keep running. "
+                              "Re-run the same command to resume.")
+            self._step("delete", version=app_version(app))
+        expected_source = None
+        if self.old.unversioned and expect_version is not None:
+            expected_source = self.old if expect_version == self.old.version else self.new if expect_version == self.new.version else None
+            if expected_source is None:
+                raise SwapError(f'Unrecognized expected version for exact-identity DELETE: {expect_version!r}')
+        guard = self._legacy_guard(intent, expected=expected_source) if self.old.unversioned else None
+        if guard is None:
+            intent()
         try:
             self.client._mutate(
                 "delete",
                 DELETE_APP_PATH.format(name=quote(t, safe="")),
                 operation=f"delete script {t}",
                 accepted_statuses=(404,),
+                **({'before_send': guard} if guard is not None else {}),
             )
         except PanelTransportError as error:
             self.logger.warning("DELETE did not complete cleanly (%s); checking the inventory", error)
         except PanelHTTPError as error:
             still = find_app(self._patiently(self._apps), t)
+            if (self.old.unversioned and expect_version == self.old.version and still is not None
+                    and still.get('present') is True and app_error(still) is None):
+                self._prove_identity(still, self.old)
+                self.entry['deleted'] = False
+                raise SwapAbort(f'the panel refused DELETE {t}; the pinned original remains installed') from error
             if (expect_version is not None and still is not None and still.get("present") is True
                     and app_version(still) == expect_version and app_error(still) is None):
                 self.entry["deleted"] = False
@@ -1730,17 +1881,28 @@ class ScriptSwap:
         raise SwapPaused(f"the matrix stayed lit against Nightkeeper's schedule for {DARK_WAIT_SECONDS / 60:g} "
                          "min, so no reboot was sent; re-run the same command once it is dark to resume")
 
-    def _reboot_and_settle(self, purpose: str, expect: set[str]) -> Boot:
+    def _reboot_and_settle(self, purpose: str, expect: set[str], *,
+                           expected_source: SourceInfo | None = None) -> Boot:
         pre = self._await_dark(self._try_read(DEVICE_PATH))
         pre_uptime = _uptime(pre)
-        self.writes += 1
-        self._panel_state(f"reboot requested ({purpose}): the panel is restarting, or has restarted, with "
-                          f"whatever scripts it had stored. Re-run the same command to resume.")
-        self._step("reboot", purpose=purpose, before=device_summary(pre))
-        self.logger.info("Rebooting the panel: %s.", purpose)
         requested = self._mono()
+        def intent():
+            nonlocal requested
+            requested = self._mono()
+            self.writes += 1
+            self._panel_state(f"reboot requested ({purpose}): the panel is restarting, or has restarted, with "
+                              f"whatever scripts it had stored. Re-run the same command to resume.")
+            self._step("reboot", purpose=purpose, before=device_summary(pre))
+            self.logger.info("Rebooting the panel: %s.", purpose)
+        if self.old.unversioned and self.opts.target in expect and expected_source is None:
+            raise SwapError('Exact-identity verification reboot requires its expected source')
+        guard = (self._legacy_guard(intent, expected=expected_source,
+                                     absent=self.opts.target not in expect)
+                 if self.old.unversioned else None)
+        if guard is None:
+            intent()
         try:
-            self.client.reboot()
+            self.client.reboot(**({'before_send': guard} if guard is not None else {}))
         except PanelHTTPError as error:
             raise SwapError(f"the panel refused the reboot: {error}") from error
         except PanelTransportError as error:
@@ -1890,12 +2052,16 @@ class ScriptSwap:
                                                                "just before the PUT; nothing sent")
             self._step("put-skipped", **result)
             return result
-        self.writes += 1
-        self._panel_state(f"PUT {t} {src.version} sent: the source may be stored even if it failed to "
-                          "compile, and a stored source compiles at the next boot. Re-run the same command "
-                          "to resume.")
-        self._step("put", version=src.version, bytes=src.size, sha256=src.sha256, block=block)
-        self.logger.info("Installing %s %s (%d B).", t, src.version, src.size)
+        def intent():
+            self.writes += 1
+            self._panel_state(f"PUT {t} {src.version} sent: the source may be stored even if it failed to "
+                              "compile, and a stored source compiles at the next boot. Re-run the same command "
+                              "to resume.")
+            self._step("put", version=src.version, bytes=src.size, sha256=src.sha256, block=block)
+            self.logger.info("Installing %s %s (%d B).", t, src.version, src.size)
+        guard = self._legacy_guard(intent, absent=True, minimum_block=need) if self.old.unversioned else None
+        if guard is None:
+            intent()
         try:
             response = self.client._mutate(
                 "put",
@@ -1904,6 +2070,7 @@ class ScriptSwap:
                 accepted_statuses=_ERROR_STATUSES,
                 data=src.body,
                 headers={"Content-Type": "text/plain; charset=utf-8"},
+                **({'before_send': guard} if guard is not None else {}),
             )
         except PanelTransportError as error:
             result.update(kind="unknown", status=None, detail=str(error))
@@ -1956,6 +2123,12 @@ class ScriptSwap:
         error = app_error(app)
         if app is None or app.get("present") is not True:
             kind = "not-stored"
+        elif self.old.unversioned:
+            try:
+                self._prove_identity(app, src)
+                kind = 'ok' if error is None else 'oom' if is_out_of_memory(error) else 'error'
+            except SwapError:
+                kind = 'identity-unproven'
         elif app_version(app) == src.version and error is None:
             kind = "ok"
         elif app_version(app) == src.version and is_out_of_memory(error):
@@ -1995,7 +2168,8 @@ class ScriptSwap:
                                           fresh=boot if kind == "no-room" else None)
                 self._panel_state(f"{t} {new.version} sent ({kind}); not yet verified after a reboot. "
                                   "Re-run the same command to resume.")
-            boot = self._reboot_and_settle(f"verify {t} {new.version}", self.expected)
+            boot = self._reboot_and_settle(f"verify {t} {new.version}", self.expected,
+                                           **({'expected_source': new} if self.old.unversioned else {}))
             problems = self._verify(new, boot)
             if problems:
                 return self._rollback("verification failed: " + "; ".join(problems))
@@ -2049,7 +2223,12 @@ class ScriptSwap:
         else:
             if app.get("origin") != "script":
                 problems.append(f"{t} has origin {app.get('origin')!r}")
-            if app_version(app) != src.version:
+            if self.old.unversioned:
+                try:
+                    self._prove_identity(app, src)
+                except SwapError as error:
+                    problems.append(str(error))
+            elif app_version(app) != src.version:
                 problems.append(f"{t} reports version {app_version(app)!r}, expected {src.version!r}")
             if app_error(app):
                 problems.append(f"{t} reports error {app_error(app)!r}")
@@ -2069,7 +2248,7 @@ class ScriptSwap:
         loaded = (boot.heap or {}).get(t, {})
         before = (self.entry["before"].get("boot_heap") or {}).get(t, {})
         verification = {
-            "version": src.version,
+            "version": None if src.unversioned else src.version,
             "problems": problems,
             "vm_heap": loaded.get("vm_heap"),
             "vm_heap_before": before.get("vm_heap"),
@@ -2097,7 +2276,9 @@ class ScriptSwap:
         return problems
 
     def _installed(self, src: SourceInfo) -> None:
-        self.entry["installed_version"] = src.version
+        self.entry["installed_version"] = None if src.unversioned else src.version
+        if self.old.unversioned:
+            self.entry['installed_identity'] = dict(self.entry.get('last_identity') or {})
         self._panel_state(f"{self.opts.target} {src.version} installed and verified after a reboot")
         self.logger.info("%s %s verified after a reboot.", self.opts.target, src.version)
 
@@ -2122,7 +2303,8 @@ class ScriptSwap:
                 raise RollbackImpossible(f"{t} is now a non-script app (origin {app.get('origin')!r})")
             if state == OLD_OK:
                 # Resumed after the old source went back in: prove it at a boot.
-                boot = self._reboot_and_settle(f"verify {t} {old.version}", self.expected)
+                boot = self._reboot_and_settle(f"verify {t} {old.version}", self.expected,
+                                               **({'expected_source': old} if old.unversioned else {}))
                 problems = self._verify(old, boot)
                 if problems:
                     raise RollbackImpossible(f"{old.version} is installed but did not verify: {'; '.join(problems)}")
@@ -2162,7 +2344,8 @@ class ScriptSwap:
             if kind == "oom":
                 self.logger.warning("The %s reinstall reported out of memory; the source is stored and "
                                     "compiles at the verification boot.", old.version)
-            boot = self._reboot_and_settle(f"verify {t} {old.version}", self.expected)
+            boot = self._reboot_and_settle(f"verify {t} {old.version}", self.expected,
+                                           **({'expected_source': old} if old.unversioned else {}))
             problems = self._verify(old, boot)
             if problems:
                 raise RollbackImpossible(f"{old.version} did not verify: {'; '.join(problems)}")
@@ -2203,15 +2386,20 @@ class ScriptSwap:
                 pass
             if origin_checked:
                 attempts += 1
-                self.entry["deleted"] = True
-                self.writes += 1
-                if attempts == 1:
-                    self._panel_state(f"DELETE {t} sent during a boot loop: {t} may be deleted. "
-                                      "Re-run the same command to resume.")
-                    self._step("delete", version=None, boot_loop=True)
+                def intent():
+                    self.entry["deleted"] = True
+                    self.writes += 1
+                    if attempts == 1:
+                        self._panel_state(f"DELETE {t} sent during a boot loop: {t} may be deleted. "
+                                          "Re-run the same command to resume.")
+                        self._step("delete", version=None, boot_loop=True)
+                guard = self._legacy_guard(intent) if self.old.unversioned else None
+                if guard is None:
+                    intent()
                 try:
                     self.client._mutate("delete", DELETE_APP_PATH.format(name=quote(t, safe="")),
-                                        operation=f"delete script {t} (boot loop)", accepted_statuses=(404,))
+                                        operation=f"delete script {t} (boot loop)", accepted_statuses=(404,),
+                                        **({'before_send': guard} if guard is not None else {}))
                 except PanelClientError:
                     pass
             if self._mono() >= deadline:
@@ -2244,14 +2432,40 @@ class ScriptSwap:
                 self._sleep(1.0)
 
     def _rollback_command(self) -> str:
-        """A command that puts the old version back from any state, as written."""
+        """Restore from a recognized state, retaining the source identity contract."""
         t, old, new = self.opts.target, self.old, self.new
+        if old.unversioned:
+            o = self.opts
+            argv = [t, new.path, '--expect-version', new.version, '--expect-sha256', new.sha256,
+                    '--rollback', old.path, '--rollback-version', UNVERSIONED,
+                    '--rollback-installed-sha256', old.installed_sha256, '--rollback-sha256', old.sha256,
+                    '--panel', o.base_url, '--report', str(o.report_path), '--snapshot-root', str(o.snapshot_root),
+                    '--maintenance-report', str(o.maintenance_report), '--firmware', o.firmware,
+                    '--boot-timeout', str(o.boot_timeout), '--settle-timeout', str(o.settle_timeout),
+                    '--screen-seconds', str(o.screen_seconds), '--rollback-reboots', str(o.rollback_reboots),
+                    '--max-wait-minutes', str(o.max_wait_minutes), '--rollback-now']
+            if o.hub_config is not None:
+                argv += ['--hub-config', str(o.hub_config)]
+            if o.require_dark:
+                argv += ['--require-dark']
+            if o.wait_for_nightly:
+                argv += ['--wait-for-nightly']
+            if not o.fidelity:
+                argv += ['--no-fidelity']
+            self.entry['recovery_argv'] = argv
+            def quoted(value):
+                if os.name != 'nt':
+                    return shlex.quote(value)
+                return value if re.fullmatch(r'[-A-Za-z0-9_./:\\]+', value) else "'" + value.replace("'", "''") + "'"
+            return 'script_swap.py ' + ' '.join(quoted(value) for value in argv)
         if self.opts.argv:
             argv = [arg for arg in self.opts.argv if arg not in ("--install-if-absent", "--dry-run", "--check-only")]
             if "--rollback-now" not in argv:
                 argv.append("--rollback-now")
             return "script_swap.py " + " ".join(argv)
         flags = " --require-dark" if self.opts.require_dark else ""
+        if old.unversioned:
+            flags += f' --rollback-installed-sha256 {old.installed_sha256} --rollback-sha256 {old.sha256}'
         return (f"script_swap.py {t} {new.path} --expect-version {new.version} --rollback {old.path} "
                 f"--rollback-version {old.version}{flags} --rollback-now")
 
@@ -2269,7 +2483,7 @@ class ScriptSwap:
             first = (f"Re-running '{again}' resumes the rollback to {old.version}" if self.entry.get("rollback_reason")
                      else f"Re-running '{again}' resumes from what the panel reports")
             self.entry["next"] = (
-                f"{first}. To put {old.version} back from any state instead (it never sends {new.version}): "
+                f"{first}. To put {old.version} back from a recognized state instead (it never sends {new.version}): "
                 f"{self._rollback_command()}"
             )
         banner = "!" * 72
@@ -2599,7 +2813,9 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("source", help="new Berry source (minified before upload)")
     parser.add_argument("--expect-version", required=True, help="the new source's # @version")
     parser.add_argument("--rollback", required=True, help="source of the version installed now")
-    parser.add_argument("--rollback-version", required=True, help="the version installed now")
+    parser.add_argument("--rollback-version", required=True, help="the version installed now; use unversioned only with both full SHA-256 pins")
+    parser.add_argument("--rollback-installed-sha256", default=None,
+                        help="complete SHA-256 of the installed original; requires --rollback-version unversioned and a full --rollback-sha256")
     parser.add_argument("--dry-run", action="store_true", help="preflight only: no write, no snapshot")
     parser.add_argument("--check-only", action="store_true",
                         help="read-only health check of the installed new version (e.g. the morning after)")
@@ -2612,7 +2828,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--replace-broken", action="store_true",
                         help="replace the old version even though it reports an error")
     parser.add_argument("--rollback-now", action="store_true",
-                        help="put the rollback version back from any state (target absent, new version, "
+                        help="put the rollback version back from a recognized state (target absent, new version, "
                              "unfinished run); never sends the new source")
     parser.add_argument("--expect-sha256", default=None,
                         help="refuse unless the minified new source's SHA-256 starts with this (>= 12 hex)")
@@ -2668,6 +2884,7 @@ def options_from_args(args: argparse.Namespace, argv: list[str]) -> tuple[SwapOp
         allow_ungated=args.allow_ungated,
         expect_sha256=args.expect_sha256,
         rollback_sha256=args.rollback_sha256,
+        rollback_installed_sha256=args.rollback_installed_sha256,
         report_write=write_files,
         fidelity=not args.no_fidelity,
         firmware=args.firmware,
