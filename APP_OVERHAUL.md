@@ -31,7 +31,7 @@ jobs for firmware compatibility passed. These are observations, not long-term pr
 | PC stats | Six distinct GPU rotor poses with a consistent loop seam; existing numeric lane preserved. | Review CPU/RAM/combined/NET identity and readability in their actual alert states. |
 | Desk Companion | Cleaner round silhouette, 120 ms blink, unchanged 1.92 s cycle and five mood props. | User visual review, then staged host adoption and physical appearance check. |
 | AQI | Existing six category designs retained as reference. Live service is explicitly static. | Review category legibility, severity pacing and whether animation should be enabled. |
-| Moon / Ocean | Existing installed sources preserved. Ocean 3.0 candidate adds visible-time lifecycle, a clearer first visitor and compact exact-color caches. See `OCEAN_OVERHAUL.md`. | Moon review; exact-identity legacy Ocean rollback support; then guarded physical memory/FPS and appearance checks. |
+| Moon / Ocean | Installed sources preserved. Ocean 3.0 adds visible-time lifecycle, a clearer visitor and compact caches. Moon 2.2 adds width-aware information, complete percentages and bounded camera motion. See `OCEAN_OVERHAUL.md` / `MOON_OVERHAUL.md`. | Exact-identity legacy Ocean rollback support, user visual review, then guarded physical memory/FPS and appearance checks for both candidates. |
 | Now Playing / information apps | Existing Now Playing behavior is the visual quality reference. | Review title/progress behavior, Focus, reminders, calendar and alert layouts against that standard. |
 | Everyday controls | Audit found missing installed Desk Controls modules, legacy-only launch/config assumptions and weak pending-command feedback. | Complete the unified controls/QoL pass. The early local draft is preserved separately and is not part of this visual change. |
 
@@ -73,3 +73,10 @@ is unchanged. The source-executed 30-second preview and lifecycle tests are in
 `OCEAN_OVERHAUL.md`. This follow-up improves encounter visibility and hidden-time
 behavior without adding more scene elements. Its actual total VM heap use,
 real device heap/FPS and physical acceptance still require verification.
+
+## Moon candidate follow-up
+
+`weather/moon-panel-v2.2.ax` leaves the installed 2.1 reference unchanged. Its
+source-executed comparison covers four illustrative phases and an unsynced manual
+activation. Native width measurements protect the information layout; the preview
+font remains a model. See `MOON_OVERHAUL.md` for the 33 checks and deployment gates.
