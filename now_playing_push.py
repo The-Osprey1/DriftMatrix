@@ -1087,6 +1087,7 @@ async def run_script_bridge(
     *, panel_url: str | None = None, bridge_port: int | None = None,
     stale_after_seconds: float | None = None, script_path: Path | None = None,
     allow_script_install: bool = True,
+    reduced_motion: bool = False,
 ) -> None:
     """Serve media state while AWTRIX renders the page locally in Berry.
 
@@ -1095,13 +1096,19 @@ async def run_script_bridge(
     installs the rendered Berry source before polling starts.
     """
 
+    if not isinstance(reduced_motion, bool):
+        raise ValueError('reduced_motion must be a boolean')
+    if store is not None and reduced_motion and not store.reduced_motion:
+        raise ValueError('Configure reduced motion on the supplied state store')
     configured = panel_url is not None or bridge_port is not None
     endpoint = AWTRIX if panel_url is None else panel_url
     port = STATE_SERVER_PORT if bridge_port is None else bridge_port
     template_path = SCRIPT_TEMPLATE_PATH if script_path is None else Path(script_path)
     logger = configure_logging()
     owns_store = store is None
-    state_store = store or BridgeStateStore(stale_after=STATE_STALE_SECONDS if stale_after_seconds is None else stale_after_seconds)
+    state_store = store or BridgeStateStore(
+        stale_after=STATE_STALE_SECONDS if stale_after_seconds is None else stale_after_seconds,
+        reduced_motion=reduced_motion)
     server: Any | None = None
     server_thread: threading.Thread | None = None
     # Kept for the address re-check in the polling loop below. The URL handed
@@ -1122,6 +1129,9 @@ async def run_script_bridge(
                 template = template_path.read_text(encoding="utf-8")
             except OSError as error:
                 raise RuntimeError(f"Could not read {template_path.name}: {error}") from error
+
+            if reduced_motion and '# @feature reduced_motion' not in template.splitlines():
+                raise RuntimeError('Reduced motion requires a compatible resident script template; use the reviewed 2.2 candidate')
 
             setup_failures = 0
             while not _stop_requested(stop_event):
@@ -1632,6 +1642,7 @@ def run_worker(config: DriftMatrixConfig, stop_event: threading.Event) -> int:
         poll_seconds=options.get("poll_seconds", MEDIA_POLL_SECONDS),
         stale_after_seconds=options.get("stale_after_seconds", STATE_STALE_SECONDS),
         script_path=options.get("script_path"),
+        **({"reduced_motion": True} if options.get("reduced_motion", False) else {}),
         **({"allow_script_install": False} if not options.get("allow_script_install", True) else {}),
     ))
     return 0

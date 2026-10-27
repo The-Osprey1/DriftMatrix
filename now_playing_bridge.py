@@ -87,7 +87,11 @@ class BridgeStateStore:
         initial: BridgeState | None = None,
         stale_after: float = 30.0,
         clock: Callable[[], float] = time.monotonic,
+        *, reduced_motion: bool = False,
     ) -> None:
+        if not isinstance(reduced_motion, bool):
+            raise ValueError('reduced_motion must be a boolean')
+        self._reduced_motion = reduced_motion
         self._clock = clock
         self._stale_after = max(1.0, float(stale_after))
         self._lock = threading.Lock()
@@ -114,6 +118,16 @@ class BridgeStateStore:
                 self._state = BridgeState(revision=self._state.revision + 1)
                 self._updated_at = now
             return self._state
+
+    @property
+    def reduced_motion(self) -> bool:
+        return self._reduced_motion
+
+    def payload(self) -> dict[str, object]:
+        payload = self.snapshot().to_dict()
+        if self.reduced_motion:
+            payload['m'] = True
+        return payload
 
 
 class _BridgeHTTPServer(ThreadingHTTPServer):
@@ -145,7 +159,7 @@ def make_server(
                 return
 
             payload = json.dumps(
-                store.snapshot().to_dict(),
+                store.payload(),
                 ensure_ascii=True,
                 separators=(",", ":"),
             ).encode("ascii")
