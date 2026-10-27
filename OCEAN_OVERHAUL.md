@@ -60,11 +60,12 @@ subset, VM allocations, physical brightness or the ESP32's draw timing. The
 candidate is 10,904 bytes minified, so it remains subject to the script swap's
 contiguous-memory preflight and recovery policy.
 
-The installed legacy Ocean has no version header. The existing `script_swap.py`
-expects versioned rollback sources; a safe adoption path therefore still needs
-exact hash identity for that legacy source, followed by a fresh snapshot,
-validated rollback, guarded replacement, post-boot memory/FPS and physical checks.
-Do not relabel or overwrite `ocean.ax` merely to satisfy that preflight.
+The installed legacy Ocean has no version header. The explicit unversioned mode
+in `script_swap.py` now implements separate original/upload hash pins, fresh
+source proof under the mutation gate, exact snapshots and resume/rollback checks.
+See `LEGACY_SCRIPT_IDENTITY.md`. Fresh live identity, validated maintenance and
+rollback, guarded replacement, post-boot memory/FPS and physical checks remain.
+Do not relabel or overwrite `ocean.ax` merely to satisfy preflight.
 
 No resident script, host configuration, scheduled task, panel power or brightness
 was changed while preparing this candidate. The overall app overhaul remains active.
