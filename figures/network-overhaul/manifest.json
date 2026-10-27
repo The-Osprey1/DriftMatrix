@@ -1,0 +1,27 @@
+{
+  "baseline_revision": "e49dc6690f351234c33301e663f1efb959354cd2",
+  "baseline_sha256": "79c567a5a6ac369ce28abb38229945a2c5b3ad38b3ee6053bb6afa16e578d0ce",
+  "cases": 14,
+  "firmware": "1.2.2",
+  "max_wire_bytes": 1567,
+  "changed": [
+    "low",
+    "normal",
+    "fraction",
+    "fast",
+    "faster",
+    "last-mib",
+    "gib",
+    "multi-gib",
+    "ceiling",
+    "zero",
+    "unknown",
+    "cpu-priority",
+    "gpu-priority"
+  ],
+  "source_sha256_utf8_lf": {
+    "pc_stats_push.py": "bb6522c21467f616aefb9cc62ddb1a6e8a380cf3b59f454e87413c82d3e6f447",
+    "network_readout.py": "33568a3141ece09cf3944ed0c79400e43557ff62f07291a43bdda16663401b18",
+    "pyproject.toml": "9f8e0d1027754d84963180c7982a3d885db25ad5c865e7d7e75d3dce86bd73ae"
+  }
+}

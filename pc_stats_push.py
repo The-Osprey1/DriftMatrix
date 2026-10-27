@@ -45,6 +45,7 @@ except ImportError:
     )
 
 import firmware_compat
+import network_readout
 import panel_gate
 import threading
 from service_runtime import DriftMatrixConfig, run_owned, worker_adapter, wait, in_quiet_hours
@@ -70,7 +71,6 @@ from pc_stats_preview import (
     draw_combined_jewel,
     draw_cpu_jewel,
     draw_gpu_jewel,
-    draw_net_jewel,
     draw_ram_jewel,
     new_frame,
     panel_frame,
@@ -412,7 +412,7 @@ def _icon_frame(label: str, value: float, phase: int, other: float | None = None
     if label in PC_DRAWERS:
         PC_DRAWERS[label](frame, value, phase)
     elif label == "NET":
-        draw_net_jewel(frame, value, phase)
+        network_readout.draw_receive_icon(frame, phase)
     elif label == "BOTH" and other is not None:
         # Keep both load needles truthful and still, with two colours of light
         # orbiting the bezel so a mixed CPU/RAM alert also stays animated.
@@ -483,7 +483,7 @@ def _encode_loop(frames: list[Image.Image], **save: object) -> bytes:
 @lru_cache(maxsize=12)
 def _animated_icon(label: str, level: int) -> bytes:
     representative = (85.0, 92.0, 98.0)[level]
-    hardware = label in PC_DRAWERS
+    hardware = label in PC_DRAWERS or label == 'NET'
     frame_count = ICON_FRAME_COUNT if hardware else level + 4
     frames = [_icon_frame(label, representative, phase) for phase in range(frame_count)]
     return _encode_loop(
@@ -558,7 +558,7 @@ def validate_icon_gif(data: bytes) -> None:
 
 def build_icon_gif(label: str, value: float, animated: bool = True) -> bytes:
     label = label.upper()
-    level = severity_level(value)
+    level = 0 if label == 'NET' else severity_level(value)
     return _animated_icon(label, level) if animated else _static_icon(label, level)
 
 
@@ -566,8 +566,10 @@ def _lane_bytes(
     label: str,
     value: float,
     history: tuple[float, ...] | None = None,
+    *, network_full_scale_mib_s: float = network_readout.DEFAULT_FULL_SCALE_MIB_S,
 ) -> bytes:
-    frame = glance_lane(value)
+    frame = (network_readout.render_lane(network_readout.reading(value, network_full_scale_mib_s))
+             if label == 'NET' else glance_lane(value))
     assert all(frame[y][GUTTER_X] == BLACK for y in range(HEIGHT))
     return bytes(
         channel
@@ -600,12 +602,15 @@ def metric_payload(
     value: float,
     animated: bool = True,
     history: tuple[float, ...] | None = None,
+    *, network_full_scale_mib_s: float = network_readout.DEFAULT_FULL_SCALE_MIB_S,
 ) -> dict:
     """Build one stable data lane plus a tiny locally animated metric jewel."""
     label = label.upper()
-    value = normalize_percent(value)
+    if label != 'NET':
+        value = normalize_percent(value)
     icon = build_icon_gif(label, value, animated=animated)
-    lane = base64.b64encode(_lane_bytes(label, value, history)).decode("ascii")
+    lane = base64.b64encode(_lane_bytes(label, value, history,
+        network_full_scale_mib_s=network_full_scale_mib_s)).decode("ascii")
     payload = {
         "icon": base64.b64encode(icon).decode("ascii"),
         "iconMode": "fixed",
@@ -658,6 +663,7 @@ def build_payload(
     metrics: list[tuple[str, float]],
     animated: bool = True,
     histories: dict[str, tuple[float, ...]] | None = None,
+    *, settings: 'PCSettings | None' = None,
 ) -> dict:
     """Create exactly one page, even when multiple metrics are elevated."""
     values = {label.upper(): value for label, value in metrics}
@@ -681,6 +687,8 @@ def build_payload(
         values[face],
         animated=animated,
         history=histories.get(face),
+        **({'network_full_scale_mib_s': settings.network_full_scale_mib_s}
+           if face == 'NET' and settings is not None else {}),
     )
 
 
@@ -693,6 +701,10 @@ def _page_face(values: dict[str, float]) -> str:
     build_payload and page_view both choose through here, so the refresh logic
     can never disagree with the page about what is on screen.
     """
+    # Throughput is useful activity information, not a resource percentage.
+    # Keep it from displacing a simultaneously active hardware alert.
+    if any(label != 'NET' for label in values):
+        values = {label: value for label, value in values.items() if label != 'NET'}
     if len(values) == 1:
         return next(iter(values))
     if set(values) == {"CPU", "RAM"}:
@@ -710,23 +722,28 @@ class PageView:
     """Everything a pushed page shows, at the resolution a viewer can see.
 
     Together with the animation mode these fields fix every byte of the
-    payload: the icon is chosen by face and severity level, and the lane is
-    drawn from the integer percent alone (its rail colour is lane_level).
+    payload: percentage pages use integer percent; receive throughput carries
+    its visible binary-unit label and quantized rail separately.
     """
 
     labels: tuple[str, ...]
     face: str
     icon_levels: tuple[int, ...]
     lane_level: str
-    percent: int
+    percent: int | None
+    network: network_readout.NetworkReading | None = None
 
 
-def page_view(metrics: list[tuple[str, float]]) -> PageView:
+def page_view(metrics: list[tuple[str, float]], *, settings: 'PCSettings | None' = None) -> PageView:
     """What build_payload would draw for these metrics."""
     values = {label.upper(): value for label, value in metrics}
     if not values:
         raise ValueError("a page view requires an active metric")
     face = _page_face(values)
+    if face == 'NET':
+        reading = network_readout.reading(values['NET'], settings.network_full_scale_mib_s
+            if settings is not None else network_readout.DEFAULT_FULL_SCALE_MIB_S)
+        return PageView(tuple(label for label, _ in metrics), face, (0,), 'info', None, reading)
     if face == COMBINED_FACE:
         cpu = normalize_percent(values["CPU"])
         ram = normalize_percent(values["RAM"])
@@ -919,7 +936,7 @@ def sample_network_mb_s(
     current_bytes: int,
     current_time: float,
 ) -> float:
-    """Compute download rate in MB/s between two monotonic timestamps."""
+    """Compute receive rate in MiB/s; the historical function name is retained."""
     if prev_bytes is None or prev_time is None:
         return 0.0
     elapsed = current_time - prev_time
@@ -949,6 +966,15 @@ class PCSettings:
     request_timeout_seconds: float = REQUEST_TIMEOUT
     quiet_hours: object = None
     timezone_name: str | None = None
+    network_full_scale_mib_s: float = network_readout.DEFAULT_FULL_SCALE_MIB_S
+    network_refresh_delta_mib_s: float = network_readout.DEFAULT_REFRESH_DELTA_MIB_S
+
+    def __post_init__(self):
+        for name in ('network_full_scale_mib_s', 'network_refresh_delta_mib_s'):
+            value = getattr(self, name)
+            if (isinstance(value, bool) or not isinstance(value, (int, float))
+                    or not math.isfinite(value) or not 0 < value <= network_readout.MAX_SAMPLE_MIB_S):
+                raise ValueError(name + ' must be positive and at most 10000')
 
 
 def retry_delay(failure_count: int, *, settings: PCSettings | None = None) -> float:
@@ -1026,6 +1052,7 @@ def _safe_page(
     metrics: list[tuple[str, float]],
     animated: bool,
     histories: dict[str, tuple[float, ...]] | None,
+    *, settings: PCSettings | None = None,
 ) -> tuple[dict | None, SyncError | None]:
     """Build a page, degrading to static art rather than killing the watcher.
 
@@ -1038,7 +1065,8 @@ def _safe_page(
     rejection: ValueError | None = None
     for attempt_animated in ((True, False) if animated else (False,)):
         try:
-            return build_payload(metrics, animated=attempt_animated, histories=histories), None
+            return build_payload(metrics, animated=attempt_animated, histories=histories,
+                **({'settings': settings} if settings is not None else {})), None
         except ValueError as error:
             rejection = error
     return None, SyncError(f"page rejected locally: {rejection}", refused=True)
@@ -1099,7 +1127,7 @@ def sync_panel(
                     return current_labels, _http_error("cleanup", response)
             return (), None
 
-        page, rejection = _safe_page(metrics, animated, histories)
+        page, rejection = _safe_page(metrics, animated, histories, settings=settings)
         if page is None:
             return current_labels, rejection
 
@@ -1191,13 +1219,26 @@ def held_metrics(
 
 def shows_change(view: PageView, published: PageView, *, settings: PCSettings | None = None) -> bool:
     """Whether this page would look meaningfully different from the panel's."""
-    return (
+    structural = (
         view.labels != published.labels
         or view.face != published.face
         or view.icon_levels != published.icon_levels
         or view.lane_level != published.lane_level
-        or abs(view.percent - published.percent) >= (settings.refresh_delta_points if settings else REFRESH_DELTA_POINTS)
     )
+    if structural:
+        return True
+    if view.face == 'NET':
+        current, prior = view.network, published.network
+        if current is None or prior is None:
+            return current != prior
+        if current.unit != prior.unit or current.rail_fill != prior.rail_fill:
+            return True
+        if current.mib_s is None or prior.mib_s is None:
+            return current.mib_s != prior.mib_s
+        delta = settings.network_refresh_delta_mib_s if settings else network_readout.DEFAULT_REFRESH_DELTA_MIB_S
+        difference = abs(current.mib_s - prior.mib_s)
+        return difference >= delta or math.isclose(difference, delta, rel_tol=1e-12)
+    return abs(view.percent - published.percent) >= (settings.refresh_delta_points if settings else REFRESH_DELTA_POINTS)
 
 
 def relabelled_in_place(
@@ -1306,7 +1347,7 @@ def sync_due(
     if published_at is None:
         return True
     return refresh_due(
-        page_view(metrics),
+        page_view(metrics, settings=settings),
         published_view,
         now - published_at,
         change_streak=change_streak,
@@ -1325,7 +1366,7 @@ def run_pc_stats(stop_event=None, settings: PCSettings | None = None) -> None:
     cpu_gate = MetricGate(CPU_SHOW_AT, CPU_CLEAR_BELOW)
     ram_gate = MetricGate(RAM_SHOW_AT, RAM_CLEAR_BELOW)
     gpu_gate = MetricGate(GPU_SHOW_AT, GPU_CLEAR_BELOW)
-    net_gate = MetricGate(NET_SHOW_AT, NET_CLEAR_BELOW, max_value=10_000.0)
+    net_gate = MetricGate(NET_SHOW_AT, NET_CLEAR_BELOW, max_value=network_readout.MAX_SAMPLE_MIB_S)
     published_labels: tuple[str, ...] | None = None
     published_view: PageView | None = None  # what the panel last took from us
     published_at: float | None = None  # when it took it (keep-alive base)
@@ -1352,7 +1393,7 @@ def run_pc_stats(stop_event=None, settings: PCSettings | None = None) -> None:
 
     print(
         f"Watching CPU >= {CPU_SHOW_AT}%, RAM >= {RAM_SHOW_AT}%, "
-        f"GPU >= {GPU_SHOW_AT}%, NET >= {NET_SHOW_AT} MB/s every "
+        f"GPU >= {GPU_SHOW_AT}%, receive >= {NET_SHOW_AT} MiB/s every "
         f"{interval}s. The panel stays quiet otherwise. Ctrl+C to stop."
     )
 
@@ -1477,7 +1518,7 @@ def run_pc_stats(stop_event=None, settings: PCSettings | None = None) -> None:
             published_view = replace(published_view, labels=published_labels)
 
         if display and published_view is not None and call(shows_change,
-            page_view(display), published_view
+            call(page_view, display), published_view
         ):
             change_streak += 1
         else:
@@ -1514,7 +1555,7 @@ def run_pc_stats(stop_event=None, settings: PCSettings | None = None) -> None:
                 probe_may_lift = True
                 published_animated = animated if display else None
                 if display:
-                    published_view = page_view(display)
+                    published_view = call(page_view, display)
                     published_at = now
                     change_streak = 0
                     if not was_visible:

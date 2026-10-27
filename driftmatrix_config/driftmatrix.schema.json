@@ -788,6 +788,12 @@
       "type": "object",
       "additionalProperties": false,
       "properties": {
+        "network_full_scale_mib_s": {
+          "type": "number", "exclusiveMinimum": 0, "maximum": 10000
+        },
+        "network_refresh_delta_mib_s": {
+          "type": "number", "exclusiveMinimum": 0, "maximum": 10000
+        },
         "interval_seconds": {
           "$ref": "#/definitions/positive"
         },

@@ -20,6 +20,16 @@ def run_worker(config: DriftMatrixConfig, stop_event: threading.Event) -> int:
 
 Workers retain the existing guarded transport, backoff, static fallback, and maintenance verification. Canonical PC stats timing must leave retry headroom within the existing 45-second keepalive budget, which already preserves a margin below the 60-second page lifetime: `2 * (interval_seconds + request_timeout_seconds) < 45`. The default remains 5 seconds for each value.
 
+PC stats has two optional receive-throughput settings under
+`services.pc_stats.options`: `network_full_scale_mib_s` (default 100) sets the
+visual rail scale, and `network_refresh_delta_mib_s` (default 3) sets the visible
+rate-change threshold. Both must be positive finite numbers at most 10000.
+The rail is a configured visual reference, not measured link utilization.
+Receive rates use binary MiB/s and switch to GiB/s at 1024 MiB/s. Percentage
+alerts keep `refresh_delta_points`; hardware alerts take priority over network
+traffic. Sampling, trigger/clear thresholds, confirmation, pacing and fallback
+remain unchanged. The standalone sender retains the default settings.
+
 ## Ownership
 
 Every adapter and the updated standalone entry points acquire `service_ownership` through `run_owned`. Ownership uses a nonblocking operating-system file lock:
