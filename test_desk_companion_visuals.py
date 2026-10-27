@@ -23,7 +23,7 @@ def test_each_sprite_pose_survives_the_shared_palette_encoder(mood):
         assert "transparency" not in gif.info
         for phase, source in enumerate(source_frames):
             gif.seek(phase)
-            assert gif.info["duration"] == icons.COMPANION_BEAT_MS
+            assert gif.info["duration"] == icons.COMPANION_FRAME_MS[phase]
             expected = [px for row in source[:8] for px in row[:8]]
             assert list(gif.convert("RGB").getdata()) == expected
             # Include the loop seam, where an unnoticed duplicate adds a hold.

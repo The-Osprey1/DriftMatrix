@@ -299,7 +299,7 @@ def normalize_percent(value: float) -> float:
 #        round the gold pins like the record's groove highlight
 #   RAM  a module with three chips, a comet along the gold contacts, and an
 #        activity LED in the load colour
-#   GPU  a card whose fan visibly spins (+ then x, with a motion trail)
+#   GPU  a card with a six-pose rotating fan and a motion trail
 # The hardware icons loop on six 240ms beats: the moving light stays inside
 # the 8x8 object while the value and load rail remain completely still.
 
@@ -319,11 +319,7 @@ CPU_EDGE = (tuple((x, 1) for x in range(1, 7)) +
             tuple((6, y) for y in range(2, 7)) +
             tuple((x, 6) for x in range(5, 0, -1)) +
             tuple((1, y) for y in range(5, 1, -1)))
-FAN_RING = ((3, 1), (4, 1), (5, 2), (6, 3), (6, 4), (5, 5),
-            (4, 6), (3, 6), (2, 5), (1, 4), (1, 3), (2, 2))
-FAN_PLUS = (((3, 1), (4, 1), (3, 2), (4, 2)), ((5, 3), (6, 3), (5, 4), (6, 4)),
-            ((3, 5), (4, 5), (3, 6), (4, 6)), ((1, 3), (2, 3), (1, 4), (2, 4)))
-FAN_CROSS = (((1, 1), (2, 2)), ((6, 1), (5, 2)), ((6, 6), (5, 5)), ((1, 6), (2, 5)))
+
 
 
 def load_colour(value: float) -> RGB:
@@ -391,19 +387,19 @@ def _draw_gpu(frame: Frame, value: float, phase: int) -> None:
         frame[y][0] = GPU_SHROUD
         frame[y][7] = GPU_SHROUD_SHADE
     hot = load_colour(value)
-    now, before = (FAN_PLUS, FAN_CROSS) if phase % 2 == 0 else (FAN_CROSS, FAN_PLUS)
-    for blade in before:  # a trail of where the blades just were
-        x, y = blade[0]
-        frame[y][x] = (36, 96, 112)
-    for blade in now:
-        for x, y in blade:
-            frame[y][x] = gamma_lerp(GPU_SHROUD, ICE, 0.25)
-    # Two warm blade tips chase around the fan, giving its alternating poses
-    # a clear direction and retaining the cool green graphics-card identity.
-    for offset in (0, 6):
-        for trail, mix in enumerate((1.0, 0.45)):
-            x, y = FAN_RING[(phase * 2 + offset - trail) % len(FAN_RING)]
-            frame[y][x] = gamma_lerp(hot, PEARL, mix)
+    # Four blades advance 15 degrees per pose. The 90-degree loop seam is
+    # identical by symmetry, so motion has one direction instead of rocking
+    # between a plus and a cross. The values and load rail stay completely still.
+    def blades(pose, color, *, tips=False):
+        angle = pose * math.pi / (2 * ICON_FRAME_COUNT)
+        for arm in range(4):
+            theta = angle + arm * math.pi / 2
+            for radius in (1.6, 2.6):
+                x = round(3.5 + radius * math.cos(theta))
+                y = round(3.5 + radius * math.sin(theta))
+                frame[y][x] = hot if tips and radius == 2.6 else color
+    blades((phase - 1) % ICON_FRAME_COUNT, (36, 96, 112))
+    blades(phase % ICON_FRAME_COUNT, gamma_lerp(GPU_SHROUD, ICE, 0.25), tips=True)
     for x, y in ((3, 3), (4, 3), (3, 4), (4, 4)):
         frame[y][x] = GPU_HUB
 
