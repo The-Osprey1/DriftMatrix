@@ -25,7 +25,7 @@ from typing import Any, Callable
 
 from PIL import Image
 
-from icon_library import COMPANION_BEAT_MS, COMPANION_PALETTES, companion_icon
+from icon_library import COMPANION_BEAT_MS, COMPANION_FRAME_MS, COMPANION_PALETTES, companion_icon
 
 try:
     import panel_client
@@ -123,7 +123,7 @@ def draw_companion_avatar(frame: list[list[tuple[int, int, int]]], mood: Compani
 
 
 def build_companion_icon_gif(mood: CompanionMood, animated: bool = True) -> bytes:
-    """Encode exact sprite colours once, shared by all eight 240 ms frames.
+    """Encode exact sprite colours once, shared by all eight breathing poses.
 
     A shared palette avoids repeating a colour table for each small frame,
     leaving useful room under the pushed app's 2 KB limit without dropping
@@ -147,7 +147,8 @@ def build_companion_icon_gif(mood: CompanionMood, animated: bool = True) -> byte
     stream = BytesIO()
     images[0].save(
         stream, format="GIF", save_all=animated, append_images=images[1:],
-        duration=COMPANION_BEAT_MS, loop=0, disposal=1, optimize=False,
+        duration=list(COMPANION_FRAME_MS) if animated else COMPANION_BEAT_MS,
+        loop=0, disposal=1, optimize=False,
         palette=palette,
     )
     data = stream.getvalue()

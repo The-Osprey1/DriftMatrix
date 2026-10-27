@@ -298,7 +298,9 @@ def _moon(frame, step: int, art: tuple[str, ...] = CRESCENT, stars=STARS) -> Non
             _put(frame, sx, sy, _scale(RICH["star"], level))
 
 
-CLOUD_ART = ("..TTT...", ".TCCCTT.", "TCCCCCCT", "uuuuuuuu")
+CLOUD_ART = ("..TTT...", ".TCCCTT.", "TCCCCCCT", ".uuuuuu.")
+# Separate rounded banks read as overcast rather than a rectangular file icon.
+OVERCAST_ART = (".TTT....", "TCCCTTT.", ".CCCCCCu", "..uuuuu.")
 
 
 def _cloud(frame, top: int, step: int | None = None, art: tuple[str, ...] = CLOUD_ART,
@@ -367,7 +369,7 @@ def _rich_frames(kind: str, is_day: bool) -> tuple[list[list[list[RGB]]], int]:
             out.append(frame)
         return out, 240
     if kind in ("cloudy", "overcast"):
-        art = CLOUD_ART if kind == "cloudy" else ("TTTTTTTT", "CCCCCCCC", "CCCCCCCC", ".uu.uuu.")
+        art = CLOUD_ART if kind == "cloudy" else OVERCAST_ART
         top = 2 if kind == "cloudy" else 1
         out = []
         for step in range(8):
@@ -382,12 +384,12 @@ def _rich_frames(kind: str, is_day: bool) -> tuple[list[list[list[RGB]]], int]:
             frame = _rgb_blank()
             _cloud(frame, 1)
             if kind == "rain":
-                _falling(frame, RAIN_DROPS, 5, 3, step // 2, "rain", "rain_tail")
-                # Between row advances the drop heads brighten; the next
-                # frame moves them down, giving a gentler six-beat fall.
-                if step % 2:
-                    for x, phase in RAIN_DROPS:
-                        _put(frame, x, 5 + (step // 2 + phase) % 3, RICH["snow"])
+                _falling(frame, RAIN_DROPS, 5, 3, step, "rain", "rain_tail")
+                # Keep drops the same color as they move one row per beat.
+                # A small crown reflection differentiates the two falls in
+                # the six-frame loop without making every drop flash white.
+                crown_x = (2, 3, 4, 4, 3, 2)[step]
+                _put(frame, crown_x, 1, RICH["cloud_glow"])
             elif kind == "drizzle":
                 _falling(frame, DRIZZLE_DROPS, 5, 3, step // 2, "drizzle" if step % 2 else "rain", None)
             elif kind == "snow":

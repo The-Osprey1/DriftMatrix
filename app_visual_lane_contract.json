@@ -1,0 +1,80 @@
+{
+  "sun": {
+    "lane_sha256": "ea9166985cd8ddd9b79b52ca113cb0b00a049bc00c41a3000673062bf7dfac17"
+  },
+  "night": {
+    "lane_sha256": "4aa83e397cb51ffc937c0577cc8207ab979854bbf7600c5930fd2eb0f128bdc3"
+  },
+  "partly": {
+    "lane_sha256": "48ccf4e757b1a00a23038eb59e112291fbbd3b8a42c63fdfd3f8a33644bf6f47"
+  },
+  "cloudy": {
+    "lane_sha256": "24f716ff49b7ce4e38635a18959d1345e52922bcfc1bf079c34e9dac6e0e1183"
+  },
+  "overcast": {
+    "lane_sha256": "38054f9f6b7e74c0badbc6bc91a821bcd3eef3cd18573ce6a5363de1ff2b8a69"
+  },
+  "rain": {
+    "lane_sha256": "0af00fa0dfc5ee2b4e4b0308f345cdf2b2af0102453e6245cdb6d9a118f11c33"
+  },
+  "drizzle": {
+    "lane_sha256": "96eb1cafc19416f52395799586250674ac82194cddd832ae5325146967f5a194"
+  },
+  "snow": {
+    "lane_sha256": "1200cba9bedfc285b79826dc5ad6c9eb9e9048138285f7c2147c7b2c84789c8d"
+  },
+  "sleet": {
+    "lane_sha256": "5e9030eb69c1ff2f339de54f2f994d236ae1ab131c4537c9efbac79429061d68"
+  },
+  "storm": {
+    "lane_sha256": "66d74acc2d5050cc93b3706401283e7f1bfa84ad82ec41d98f62431f24677521"
+  },
+  "fog": {
+    "lane_sha256": "3164b2c7a596f356e81cd80661200ec539c218675258446e48b75552dc5e07cc"
+  },
+  "aqi-28": {
+    "lane_sha256": "75faf1f4aca683b63f3e18111626dd47af8c89016935a485c2986b4f58d100b0"
+  },
+  "aqi-72": {
+    "lane_sha256": "ebffb1b874703043789448a6deba368114ee12630abc41e112f807df1a4db40a"
+  },
+  "aqi-125": {
+    "lane_sha256": "8f7230aedcc3cef936a85dfa5a5df9382265f5b4eeb6a6fa65b7e8116dc4c89d"
+  },
+  "aqi-175": {
+    "lane_sha256": "7ed25be1fee88fd767ce3c46e8b7d7a035fa4a24dc032d6ec7df3057128b3145"
+  },
+  "aqi-250": {
+    "lane_sha256": "a70a7deffc305306e4d640869dd5cbbca04f0d4effeb7cd15bd3850b76d1ad45"
+  },
+  "aqi-350": {
+    "lane_sha256": "4c20d016f367ff5890b73da238cd61f64e44b5420bafa1ae94395bbf878d25fd"
+  },
+  "companion-idle": {
+    "lane_sha256": "dc23dc301939ae9d24aedd16668760c36ce9d307000d3220499c9101a11b760b"
+  },
+  "companion-focus": {
+    "lane_sha256": "474fce5f8e5b31ab1bf47c6aa8fe89c5b229c0303e3a71ff1c218185e8244cc0"
+  },
+  "companion-rest": {
+    "lane_sha256": "2db1f475c60487011186255ead12e7d3692a535f17c8a7efa62e53a0ab114d4f"
+  },
+  "companion-on_air": {
+    "lane_sha256": "0c3f88b2e94792f1a13e52b80414d5a8d4c24e31c106f105f2a330c5361356fc"
+  },
+  "companion-sleep": {
+    "lane_sha256": "7edb89b8f3d3dd38eaf09241424fadc5e16da708cd716ec5ba0da97f94d98ce0"
+  },
+  "cpu": {
+    "lane_sha256": "fcf65ac49b346a1c1b1e0aff4195bb1cfb80c96618b69266e6f169be61214b67"
+  },
+  "ram": {
+    "lane_sha256": "d9c6eeb9e5d1216a35c1bcab0f11c7ac8c8f226f662008596bb159a05c496944"
+  },
+  "gpu": {
+    "lane_sha256": "525d5aa415866832ab2e624342cd2951f5a83c0fd0b95524c886c224b313fd3c"
+  },
+  "combined": {
+    "lane_sha256": "d9c6eeb9e5d1216a35c1bcab0f11c7ac8c8f226f662008596bb159a05c496944"
+  }
+}

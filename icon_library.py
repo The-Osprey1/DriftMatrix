@@ -731,6 +731,9 @@ def aircraft_icon(
 
 COMPANION_BEAT_MS = 240  # a gentle 1.92 s cycle, on the panel's 120 ms beat
 COMPANION_FRAMES = 8
+# Keep the same 1.92-second cycle, with a brief natural blink and more time
+# in the open-eye poses. Every delay remains on the physical 120 ms beat.
+COMPANION_FRAME_MS = (360, 240, 240, 360, 240, 240, 120, 120)
 # Lit edge, body, belly, cool shadow, feet. Each mood has a coherent palette
 # that also colours its lane; the same character stays recognizable at one bit.
 COMPANION_PALETTES: dict[str, dict[str, RGB]] = {
@@ -747,14 +750,14 @@ COMPANION_PALETTES: dict[str, dict[str, RGB]] = {
 }
 COMPANION_TONES = COMPANION_PALETTES["idle"]
 COMPANION_ART = (
-    ".L....L.",
     "..LLLL..",
-    ".LBBBBS.",
+    ".LBBBBL.",
+    "LBBBBBBS",
     "LBBBBBBS",
     "LBbbbbBS",
     ".LbbbbS.",
     "..SSSS..",
-    ".F....F.",
+    "..F..F..",
 )
 COMPANION_EYES = ((2, 2), (5, 2))  # top-left of each 2x2 eye
 COMPANION_EYE: RGB = (255, 255, 255)
@@ -766,7 +769,7 @@ COMPANION_STEAM: RGB = (236, 246, 255)
 def companion_icon(mood: str = "idle") -> list[Frame]:
     """A jewel-coloured desk sprite with expressive props and a moving glow.
 
-    Eight distinct poses on a 240 ms beat. A highlight follows the rounded
+    Eight distinct poses over a 1.92-second cycle. A highlight follows the rounded
     shell while the body breathes, so idle never becomes a long frozen hold.
     Glasses reflect left and right, a mug's steam curls, and the headset has
     a real boom mic. The dark shadow can fade at brightness 1; the lit body,
