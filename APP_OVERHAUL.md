@@ -28,7 +28,7 @@ jobs for firmware compatibility passed. These are observations, not long-term pr
 | Workstream | Current evidence | Remaining work |
 | --- | --- | --- |
 | Weather | Rounded cloud edges and layered overcast; rain advances without white drop flashes. Animated/static previews measured. | Review the full condition family; adopt a suitable motion policy after staged panel verification. |
-| PC stats | Six distinct GPU rotor poses; CPU/RAM/combined/NET now have real reference captures in the information review. | Fix the confirmed NET unit bug: MB/s currently reaches the generic percent renderer. Review the corrected network layout before adoption. |
+| PC stats | GPU rotor poses plus a dedicated receive readout: explicit MiB/s/GiB/s, simultaneous value/unit, packet motion, configurable visual scale and hardware-first alert priority. See `NETWORK_OVERHAUL.md`. | User review of the two-row layout, browser acceptance and guarded host/physical adoption. |
 | Desk Companion | Cleaner round silhouette, 120 ms blink, unchanged 1.92 s cycle and five mood props. | User visual review, then staged host adoption and physical appearance check. |
 | AQI | Existing six category designs retained as reference. Live service is explicitly static. | Review category legibility, severity pacing and whether animation should be enabled. |
 | Moon / Ocean | Installed sources preserved. Ocean 3.0 adds visible-time lifecycle, a clearer visitor and compact caches. Moon 2.2 adds width-aware information, complete percentages and bounded camera motion. See `OCEAN_OVERHAUL.md` / `MOON_OVERHAUL.md`. | Exact-identity legacy Ocean rollback support, user visual review, then guarded physical memory/FPS and appearance checks for both candidates. |
@@ -97,3 +97,11 @@ identity and correct long Focus/reminder readings. The installed runtime and
 offline browser review are verified in `INFORMATION_OVERHAUL.md`. This audit also
 confirmed a NET unit bug and information gaps in earthquake/gaming pages; those
 remain follow-ups rather than being hidden behind the reference artwork label.
+
+## Receive-throughput follow-up
+
+The NET unit/capping defect is corrected in the staged network candidate, including
+the real sender's update detector and supervised settings. Fourteen actual-payload
+comparisons cover large rates and competing hardware alerts. The full suite passes
+2,918 tests. This leaves earthquake/gaming context, Now Playing review, resident
+rollback support and the visual/physical adoption gates active.

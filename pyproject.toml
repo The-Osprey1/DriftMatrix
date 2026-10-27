@@ -41,7 +41,7 @@ py-modules = [
     "firmware_compat", "focus_control", "focus_controller", "focus_sprint", "focus_sprint_preview",
     "game_mode", "github_sentinel", "hub_status", "icon_library", "iss_watch",
     "meeting_sentinel", "meridian_preview", "miku_sentinel", "network_sentinel",
-    "network_sentinel_preview", "next_up", "next_up_controller", "next_up_preview",
+    "network_sentinel_preview", "network_readout", "next_up", "next_up_controller", "next_up_preview",
     "nightkeeper_logic", "notify_mirror", "now_playing_bridge", "now_playing_push",
     "panel_client", "panel_down_alert", "panel_down_popup", "panel_gate", "panel_maintenance",
     "panel_scene", "pc_readouts", "pc_stats_preview", "pc_stats_push", "quake_watch",

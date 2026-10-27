@@ -312,7 +312,7 @@ class ArtAndAnimationTests(unittest.TestCase):
                     data = app.build_icon_gif(label, val, animated=animated)
                     self.assertLessEqual(len(data), app.ICON_MAX_BYTES)
                     frames, durations, loop = self.gif_frames(data)
-                    self.assertEqual(loop, 0 if label == "GPU" and animated else None)
+                    self.assertEqual(loop, 0 if animated else None)
                     self.assertTrue(all(f.size == (8, 8) for f in frames))
                     for d in durations:
                         self.assertEqual(d % 120, 0)
@@ -913,7 +913,7 @@ class PageViewTests(unittest.TestCase):
         self.assertEqual(app.page_view([("CPU", 91), ("RAM", 96)]).icon_levels, (1, 2))
         self.assertEqual(app.page_view([("CPU", 91), ("RAM", 94)]).percent, 94)
         self.assertEqual(app.page_view([("GPU", 92.0), ("NET", 25.0)]).face, "GPU")
-        self.assertEqual(app.page_view([("GPU", 82.0), ("NET", 95.0)]).face, "NET")
+        self.assertEqual(app.page_view([("GPU", 82.0), ("NET", 95.0)]).face, "GPU")
         self.assertEqual(app.page_view([("CPU", 84.4)]).percent, 84)
         self.assertEqual(app.page_view([("CPU", 84.4)]).lane_level, "fair")
 
@@ -985,8 +985,8 @@ class RefreshPolicyTests(unittest.TestCase):
                                                  change_streak=self.confirmed))
 
     def test_a_change_of_drawn_metric_pushes(self) -> None:
-        shown = self.view(("GPU", 85.0), ("NET", 84.0))
-        swapped = self.view(("GPU", 85.0), ("NET", 86.0))
+        shown = self.view(("CPU", 85.0), ("GPU", 84.0))
+        swapped = self.view(("CPU", 85.0), ("GPU", 86.0))
         self.assertNotEqual(shown.face, swapped.face)
         self.assertTrue(app.refresh_due(swapped, shown, app.PUSH_INTERVAL,
                                         change_streak=self.confirmed))
@@ -1043,7 +1043,7 @@ class RefreshPolicyTests(unittest.TestCase):
             ([("GPU", 95.0)], [("GPU", 95.0), ("NET", 40.0)], True),
             ([("CPU", 88)], [("CPU", 88), ("RAM", 90)], False),   # the jewel replaces the chip
             ([("CPU", 88)], [("RAM", 90)], False),
-            ([("CPU", 85)], [("CPU", 85), ("NET", 95.0)], False),  # NET outranks it and is drawn
+            ([("CPU", 85)], [("CPU", 85), ("NET", 95.0)], True),  # hardware keeps priority
             ([("CPU", 88)], [("CPU", 88)], False),                 # nothing changed
             ([("CPU", 88)], [], False),                            # the alert went
         )
