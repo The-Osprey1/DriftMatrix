@@ -31,6 +31,21 @@ from visual_system import (
 )
 
 
+@pytest.fixture(scope="session")
+def desktop_tk():
+    """One interpreter, fresh Toplevel windows for the desktop control tests.
+
+    Recreating Tk under fd-level capture intermittently fails in Anaconda Tcl
+    initialization (also documented in test_panel_down_popup). Keep the native
+    widget assertions, without retrying or skipping an initialization failure.
+    """
+    import tkinter as tk
+    root = tk.Tk()
+    root.withdraw()
+    yield root
+    root.destroy()
+
+
 # ---------------------------------------------------------------------------
 # Panel mutation gate
 # ---------------------------------------------------------------------------

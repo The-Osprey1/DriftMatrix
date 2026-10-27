@@ -240,6 +240,7 @@ class FocusController:
 
         # 1. Ingest commands from the queue
         commands_processed = 0
+        state_saved = False
         all_events: list[SprintEvent] = []
         try:
             pending_commands = self.queue.read()
@@ -252,10 +253,26 @@ class FocusController:
                 sprint_cmd = _focus_command_to_sprint_command(cmd)
                 transition = self.engine.dispatch(sprint_cmd)
                 all_events.extend(transition.events)
-                self.queue.ack(cmd)
                 commands_processed += 1
             except Exception as error:
                 self.logger.warning("failed to process focus command %s: %s", cmd.id, error)
+                continue
+            # Persist the consumed ID before deleting this exact queue entry.
+            # Commit each command separately: a large batch must not evict an
+            # earlier unacknowledged ID from the bounded replay history.
+            try:
+                save_state(self.state_path, self.engine.state)
+                state_saved = True
+            except Exception as error:
+                state_saved = False
+                self.logger.warning("unable to save focus state: %s", error)
+                break
+            try:
+                if not self.queue.ack(cmd):
+                    break
+            except Exception as error:
+                self.logger.warning("unable to acknowledge focus command: %s", error)
+                break
 
         # 2. Advance engine if no commands were processed this tick
         if commands_processed == 0:
@@ -264,13 +281,14 @@ class FocusController:
 
         state = self.engine.state
 
-        # 3. Persist state atomically
-        state_saved = False
-        try:
-            save_state(self.state_path, state)
-            state_saved = True
-        except Exception as error:
-            self.logger.warning("unable to save focus state: %s", error)
+        # 3. Persist ordinary clock advancement. Command ticks were committed
+        # above, or deliberately left queued after a failed commit.
+        if commands_processed == 0:
+            try:
+                save_state(self.state_path, state)
+                state_saved = True
+            except Exception as error:
+                self.logger.warning("unable to save focus state: %s", error)
 
         # 4. Check display eligibility
         visible = state.is_display_eligible(

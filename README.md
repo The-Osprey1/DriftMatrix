@@ -234,9 +234,17 @@ python now_playing_push.py
 # Start background utility orchestrator (Calendar, Commute, Weather feeds)
 python utility_hub.py
 
-# Launch Tkinter desk companion controls
-python desk_controls.py
+# Open focus, reminder and local service controls with canonical configuration
+python -m driftmatrix controls
 ```
+
+Desk Controls also opens with `driftmatrix controls` after installing this project.
+It uses the default canonical configuration when present. `python desk_controls.py`
+remains supported, with `--data-dir` for an explicit legacy state folder. Try
+`python -m driftmatrix controls --demo` for isolated temporary state and sample
+service status. Opening the window does not start workers or contact the panel.
+See [Desk Controls](docs/desk-controls.md) for custom durations, receipts and
+configuration selection.
 
 ### Key Services
 * **`pc_stats_push.py`:** Reads GPU temperature and memory using `nvidia-smi`, CPU usage, and RAM, updating the display on significant deltas with exponential backoff.

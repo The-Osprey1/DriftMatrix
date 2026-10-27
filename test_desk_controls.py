@@ -48,9 +48,9 @@ def test_command_acknowledgement_round_trip_with_real_controller(tmp_path):
     assert model.pending_id is None
 
 
-def test_native_window_controls_and_layout_in_demo(tmp_path):
+def test_native_window_controls_and_layout_in_demo(tmp_path, desktop_tk):
     import tkinter as tk
-    root = tk.Tk()
+    root = tk.Toplevel(desktop_tk)
     root.withdraw()
     try:
         model = ControlsModel(tmp_path)

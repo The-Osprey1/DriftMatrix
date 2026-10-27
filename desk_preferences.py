@@ -13,6 +13,8 @@ class Preferences:
     label: str = "TEA"
     minutes: int = 5
     keep_on_top: bool = False
+    focus_minutes: int = 25
+    snooze_minutes: int = 5
 
 
 def validate(value: dict) -> Preferences:
@@ -23,7 +25,11 @@ def validate(value: dict) -> Preferences:
     keep_on_top = value.get('keep_on_top')
     if type(minutes) is not int or not 1 <= minutes <= 1440 or type(keep_on_top) is not bool:
         raise ValueError('Invalid preferences')
-    return Preferences(label, minutes, keep_on_top)
+    focus_minutes = value.get('focus_minutes', 25)
+    snooze_minutes = value.get('snooze_minutes', 5)
+    if any(type(n) is not int or not 1 <= n <= 1440 for n in (focus_minutes, snooze_minutes)):
+        raise ValueError('Choose whole minutes from 1 to 1440')
+    return Preferences(label, minutes, keep_on_top, focus_minutes, snooze_minutes)
 
 
 def load(path: Path) -> Preferences:

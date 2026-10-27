@@ -33,7 +33,7 @@ jobs for firmware compatibility passed. These are observations, not long-term pr
 | AQI | Existing six category designs retained as reference. Live service is explicitly static. | Review category legibility, severity pacing and whether animation should be enabled. |
 | Moon / Ocean | Installed sources preserved. Ocean 3.0 adds visible-time lifecycle, a clearer visitor and compact caches. Moon 2.2 adds width-aware information, complete percentages and bounded camera motion. See `OCEAN_OVERHAUL.md` / `MOON_OVERHAUL.md`. | Exact-identity legacy Ocean rollback support, user visual review, then guarded physical memory/FPS and appearance checks for both candidates. |
 | Now Playing / information apps | Existing Now Playing behavior is the visual quality reference. | Review title/progress behavior, Focus, reminders, calendar and alert layouts against that standard. |
-| Everyday controls | Audit found missing installed Desk Controls modules, legacy-only launch/config assumptions and weak pending-command feedback. | Complete the unified controls/QoL pass. The early local draft is preserved separately and is not part of this visual change. |
+| Everyday controls | Canonical-aware `driftmatrix controls`, custom Focus/snooze durations, persistent feedback and local service overview are implemented. Focus commits state before queue acknowledgement. See `docs/desk-controls.md`. | Review the native window, complete CI verification, then adopt with the guarded host-release process. Screen-reader acceptance is unverified. |
 
 ## First visual pass
 
@@ -80,3 +80,12 @@ real device heap/FPS and physical acceptance still require verification.
 source-executed comparison covers four illustrative phases and an unsynced manual
 activation. Native width measurements protect the information layout; the preview
 font remains a model. See `MOON_OVERHAUL.md` for the 33 checks and deployment gates.
+
+## Desk Controls follow-up
+
+The desktop candidate uses canonical configuration and packages the previously
+missing GUI modules. It preserves standalone legacy selection and adds an isolated
+demo. Custom durations, status-aware actions, durable command receipts and the
+Services tab address the everyday-control audit findings. Read-only status checks
+and demo interaction do not constitute deployment of the candidate host release.
+The broader app overhaul and physical visual review remain active.
