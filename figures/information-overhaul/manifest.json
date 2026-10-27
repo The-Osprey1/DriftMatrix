@@ -1,0 +1,23 @@
+{
+  "baseline_revision": "79b55e6b95f0fed8da9ace34eec8a48cc755f9b4",
+  "baseline_sha256": "e7136da4be776d828b2e42e8cd5db734c5cd2f1ed54a6e3aaad1786d7df7baa6",
+  "firmware": "1.2.2",
+  "cases": 30,
+  "changed": [
+    "focus-long",
+    "focus-paused",
+    "reminder-long",
+    "reminder-rounded",
+    "calendar-dentist",
+    "calendar-review",
+    "calendar-standup",
+    "calendar-alias"
+  ],
+  "max_wire_bytes": 1640,
+  "sources": {
+    "visual_system.py": "01539ccedc1c62442d1eadb056f9094c2a4fee9890fb0da1efbf7b0fe2893fa5",
+    "focus_sprint_preview.py": "4e349db3dc8c5b0a738ef771d79dbd176b1c2956e651c4bbdafcf77b81a5bc6a",
+    "desk_reminder.py": "d9b59f977289be299dd8200d7dbb3eaca8e149d36fa9c3772baa0c3bfaa8dae5",
+    "next_up_preview.py": "ee462aac96b159ee84af06fd8d8f5d15f1ddd2b4af875a6f5010a9a07816a82d"
+  }
+}

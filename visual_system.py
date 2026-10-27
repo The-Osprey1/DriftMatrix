@@ -404,6 +404,31 @@ TEXT_BUDGET = LANE_WIDTH  # the lane is 23px; text may use all of it
 LABEL_GAP = 3  # one space's width between the grey label and the value
 
 
+def format_remaining_time(seconds: float, *, show_seconds: bool = True) -> str:
+    """Fit a truthful countdown: MM:SS below 100m, then H:MM as 2H05.
+
+    Minute-only readings round up, so positive remaining time is never zero.
+    99H+ is an explicit lower bound for unusually extended Focus sessions.
+    """
+    if isinstance(seconds, bool):
+        raise ValueError('remaining time must be finite')
+    remaining = float(seconds)
+    if not math.isfinite(remaining):
+        raise ValueError('remaining time must be finite')
+    remaining = max(0.0, remaining)
+    if remaining >= 100 * 3600:
+        return '99H+'
+    whole_seconds = math.ceil(remaining)
+    if show_seconds and whole_seconds < 100 * 60:
+        minutes, secs = divmod(whole_seconds, 60)
+        return f'{minutes:02d}:{secs:02d}'
+    whole_minutes = math.ceil(remaining / 60)
+    if not show_seconds and whole_minutes < 100:
+        return f'{whole_minutes}M'
+    hours, minutes = divmod(whole_minutes, 60)
+    return '99H+' if hours >= 100 else f'{hours}H{minutes:02d}'
+
+
 def glance_text_width(value: str, label: str | None = None) -> int:
     if not label:
         return measure_text(value)

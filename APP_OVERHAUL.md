@@ -28,12 +28,12 @@ jobs for firmware compatibility passed. These are observations, not long-term pr
 | Workstream | Current evidence | Remaining work |
 | --- | --- | --- |
 | Weather | Rounded cloud edges and layered overcast; rain advances without white drop flashes. Animated/static previews measured. | Review the full condition family; adopt a suitable motion policy after staged panel verification. |
-| PC stats | Six distinct GPU rotor poses with a consistent loop seam; existing numeric lane preserved. | Review CPU/RAM/combined/NET identity and readability in their actual alert states. |
+| PC stats | Six distinct GPU rotor poses; CPU/RAM/combined/NET now have real reference captures in the information review. | Fix the confirmed NET unit bug: MB/s currently reaches the generic percent renderer. Review the corrected network layout before adoption. |
 | Desk Companion | Cleaner round silhouette, 120 ms blink, unchanged 1.92 s cycle and five mood props. | User visual review, then staged host adoption and physical appearance check. |
 | AQI | Existing six category designs retained as reference. Live service is explicitly static. | Review category legibility, severity pacing and whether animation should be enabled. |
 | Moon / Ocean | Installed sources preserved. Ocean 3.0 adds visible-time lifecycle, a clearer visitor and compact caches. Moon 2.2 adds width-aware information, complete percentages and bounded camera motion. See `OCEAN_OVERHAUL.md` / `MOON_OVERHAUL.md`. | Exact-identity legacy Ocean rollback support, user visual review, then guarded physical memory/FPS and appearance checks for both candidates. |
-| Now Playing / information apps | Existing Now Playing behavior is the visual quality reference. | Review title/progress behavior, Focus, reminders, calendar and alert layouts against that standard. |
-| Everyday controls | Canonical-aware `driftmatrix controls`, custom Focus/snooze durations, persistent feedback and local service overview are implemented. Focus commits state before queue acknowledgement. See `docs/desk-controls.md`. | Review the native window, complete CI verification, then adopt with the guarded host-release process. Screen-reader acceptance is unverified. |
+| Now Playing / information apps | Calendar holds ETA/title cards; Focus and reminders use truthful long-duration labels. A 30-scene payload-exact information corpus covers eight families. See `INFORMATION_OVERHAUL.md`. | Review Now Playing title/progress, earthquake distance context and Game Mode session information; then visual/physical adoption gates. |
+| Everyday controls | Canonical-aware `driftmatrix controls`, custom Focus/snooze durations, persistent feedback and local service overview are implemented. Focus commits state before queue acknowledgement. PR #10 passed 6/6 CI. See `docs/desk-controls.md`. | User review, then guarded host-release adoption. Screen-reader acceptance is unverified. |
 
 ## First visual pass
 
@@ -89,3 +89,11 @@ demo. Custom durations, status-aware actions, durable command receipts and the
 Services tab address the everyday-control audit findings. Read-only status checks
 and demo interaction do not constitute deployment of the candidate host release.
 The broader app overhaul and physical visual review remain active.
+
+## Information follow-up
+
+Eight changed screens in a 30-scene actual-payload corpus restore calendar event
+identity and correct long Focus/reminder readings. The installed runtime and
+offline browser review are verified in `INFORMATION_OVERHAUL.md`. This audit also
+confirmed a NET unit bug and information gaps in earthquake/gaming pages; those
+remain follow-ups rather than being hidden behind the reference artwork label.

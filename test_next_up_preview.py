@@ -313,11 +313,11 @@ class LayoutAndMarqueeTests(unittest.TestCase):
 
 
 class GifAndPayloadTests(unittest.TestCase):
-    def test_short_animation_changes_bead_speed_via_frame_duration(self) -> None:
+    def test_cards_keep_readable_holds_across_urgencies(self) -> None:
         expected = {
-            art.Urgency.ROUTINE: 360,
-            art.Urgency.SOON: 240,
-            art.Urgency.IMMINENT: 120,
+            art.Urgency.ROUTINE: art.CARD_FRAME_MS,
+            art.Urgency.SOON: art.CARD_FRAME_MS,
+            art.Urgency.IMMINENT: art.CARD_FRAME_MS,
         }
         for urgency, delay in expected.items():
             with self.subTest(urgency=urgency):
@@ -328,10 +328,14 @@ class GifAndPayloadTests(unittest.TestCase):
                         image.seek(index)
                         self.assertEqual(image.info.get("duration"), delay)
 
-    def test_now_is_a_static_landed_bead_when_text_fits(self) -> None:
+    def test_now_keeps_a_static_landed_icon_across_both_cards(self) -> None:
         payload = art.build_payload(title="TV", eta="NOW", urgency="now")
         with decoded_gif(payload) as image:
-            self.assertEqual(image.n_frames, 1)
+            self.assertEqual(image.n_frames, 2)
+            image.seek(0)
+            icon = image.convert('RGB').crop((0, 0, 8, 8)).tobytes()
+            image.seek(1)
+            self.assertEqual(image.convert('RGB').crop((0, 0, 8, 8)).tobytes(), icon)
 
     def test_nonpositive_durations_fail_closed(self) -> None:
         with self.assertRaises(ValueError):
@@ -367,7 +371,7 @@ class GammaContractTests(unittest.TestCase):
 
 
 class CalmGlancePayloadTests(unittest.TestCase):
-    """Next Up on the panel-wide layout: 8x8 calendar, static lane, no scroll."""
+    """Static safety retains the 8x8 calendar and bitmap ETA lane."""
 
     def decode(self, payload):
         import base64
@@ -377,7 +381,7 @@ class CalmGlancePayloadTests(unittest.TestCase):
         return icon
 
     def test_icon_is_8x8_and_lane_is_a_static_bitmap(self) -> None:
-        payload = art.build_payload(title="Dentist appointment", minutes_until=14, eta="14M")
+        payload = art.build_payload(title="Dentist appointment", minutes_until=14, eta="14M", animated=False)
         self.assertEqual(self.decode(payload).size, (8, 8))
         self.assertEqual(payload["draw"][0][:5], ["bitmap", 9, 0, 23, 8])
         self.assertNotIn("text", payload)
@@ -387,7 +391,7 @@ class CalmGlancePayloadTests(unittest.TestCase):
         self.assertLess(art.serialized_size(payload), 2_048)
 
     def test_now_is_a_single_still_frame_with_removal_lifetime(self) -> None:
-        payload = art.build_payload(title="Standup", minutes_until=0, eta="NOW", animated=True)
+        payload = art.build_payload(title="Standup", minutes_until=0, eta="NOW", animated=False)
         self.assertEqual(getattr(self.decode(payload), "n_frames", 1), 1)
         self.assertEqual(payload["lifetimeExpiry"], "remove")
         self.assertEqual(payload["backgroundColor"], "#000000")
@@ -396,7 +400,7 @@ class CalmGlancePayloadTests(unittest.TestCase):
         import base64
         from visual_system import TRACK
         def lit(minutes):
-            raw = base64.b64decode(art.build_payload(title="X", minutes_until=minutes, eta=f"{minutes}M")["draw"][0][5])
+            raw = base64.b64decode(art.build_payload(title="X", minutes_until=minutes, eta=f"{minutes}M", animated=False)["draw"][0][5])
             row7 = [tuple(raw[(7 * 23 + x) * 3:(7 * 23 + x) * 3 + 3]) for x in range(23)]
             return sum(1 for c in row7 if max(c) > 90)
         self.assertGreater(lit(50), lit(10))
@@ -408,7 +412,7 @@ class GlanceLabelTests(unittest.TestCase):
         return sum(1 for i in range(0, len(lane), 3) if lane[i:i + 3] == bytes((178, 190, 206)))
 
     def test_a_lone_initial_is_dropped(self) -> None:
-        payload = art.build_payload(title="DENTIST APPOINTMENT TODAY", minutes_until=45)
+        payload = art.build_payload(title="DENTIST APPOINTMENT TODAY", minutes_until=45, animated=False)
         self.assertEqual(self._label_pixels(payload), 0)
 
     def test_two_letter_fragments_are_dropped_too(self) -> None:
@@ -416,7 +420,7 @@ class GlanceLabelTests(unittest.TestCase):
         # 11-13px, so in practice the lane is the countdown alone.
         for minutes in (1, 5, 12, 45, 90):
             with self.subTest(minutes=minutes):
-                payload = art.build_payload(title="AB", minutes_until=minutes)
+                payload = art.build_payload(title="AB", minutes_until=minutes, animated=False)
                 self.assertEqual(self._label_pixels(payload), 0)
 
 
