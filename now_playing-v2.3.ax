@@ -1,0 +1,450 @@
+# @name    Now Playing
+# @desc    Shaded vinyl, warm rotating label and readable media cards
+# @author  Devyn + Codex
+# @version 2.3
+# @feature reduced_motion
+
+import json
+import string
+
+# Leave the rotation entirely when nothing is playing.
+#
+# This was briefly true, which kept the app in the loop and drew a record with
+# an IDLE label. It was honest -- it never showed a stale track -- but a slot
+# that says "nothing is playing" is one more page to sit through on a rotation
+# that already has seven, and the panel says nothing more than the silence
+# already did. A media page should appear because there is media.
+#
+# should_show() keeps the real gate: fresh, playing, and either already visible
+# or past the reminder interval.
+var ALWAYS_SHOW = false
+var REMINDER_MS = 300000
+
+class NowPlaying
+  var url, in_flight, next_poll, playing, visible, received, last_shown
+  var identity, label, columns, text_w, scroll_start, scroll_column, scroll_frames, advance_sent
+  var progress_value, rail, cap_start
+  var alphabet, glyphs, heads, groove, label_ring
+  var reduced_motion, cards, card_index, card_at, record_phase, record_at
+
+  def init()
+    # The PC bridge replaces this token before installing the script.
+    self.url = "__STATE_URL__"
+    self.in_flight = false
+    self.next_poll = 0
+    self.playing = false
+    self.visible = false
+    self.received = -1
+    self.last_shown = 0
+    self.identity = ""
+    self.label = ""
+    self.columns = []
+    self.text_w = 0
+    self.scroll_start = 0
+    self.scroll_column = 0
+    self.scroll_frames = 0
+    self.advance_sent = false
+    self.progress_value = -1
+    self.rail = []
+    self.cap_start = 0
+    self.reduced_motion = false
+    self.cards = []
+    self.card_index = 0
+    self.card_at = 0
+    self.record_phase = 0
+    self.record_at = 0
+
+    # Compact 3x5 uppercase source glyphs. Each integer is one 15-bit row-major
+    # glyph; on_state() reshapes them into proportional vertical columns.
+    self.alphabet = " ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-.,':/?!&()+_=#"
+    self.glyphs = [
+      0,11245,27566,14627,27502,31143,31140,14699,23533,29847,
+      4714,23469,18727,24557,24573,11114,27556,11131,27565,14478,
+      29842,23407,23402,23549,23213,23186,29351,31599,11415,25255,
+      25230,23497,31118,14762,29330,10922,10958,448,2,20,9216,1040,
+      4772,25218,9346,10923,10530,8778,1488,7,3640,24445
+    ]
+
+    # Sixteen adjacent groove positions avoid skipping a physical LED. The
+    # ring advances at most one pose per completed draw on the 120 ms beat.
+    self.heads = [0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15]
+    self.groove = [17,25,33,41,50,51,52,53,46,38,30,22,13,12,11,10]
+    self.label_ring = [26,34,43,44,37,29,20,19]
+  end
+
+  def reset_scroll(stamp)
+    self.scroll_start = stamp
+    self.scroll_column = 0
+    self.scroll_frames = 0
+    self.advance_sent = false
+    self.card_index = 0
+    self.card_at = stamp
+  end
+
+  def set_idle()
+    self.playing = false
+    self.identity = ""
+    self.label = "IDLE"
+    # Five-pixel columns for a compact IDLE fallback.  Keeping this prebuilt
+    # avoids doing font work on every poll while the PC is idle.
+    self.columns = [31,0,31,17,17,14,0,31,16,16,16,0,31,21,21,17]
+    self.text_w = size(self.columns)
+    self.progress_value = -1
+    self.received = now_ms()
+    self.reset_scroll(self.received)
+  end
+
+  def request_next()
+    # A transition continues drawing its outgoing app for several frames. Arm
+    # the guard before requesting it so those frames cannot request it again.
+    if self.visible && !self.advance_sent
+      self.advance_sent = true
+      rotation.next()
+    end
+  end
+
+  def on_state(body, status)
+    self.in_flight = false
+    if body == nil || status < 200 || status >= 300 return end
+    var data = nil
+    try
+      data = json.load(body)
+    except ..
+      return
+    end
+    if !isinstance(data, map) return end
+
+    var active = data.find("p")
+    if type(active) != "bool" return end
+    if !active
+      if ALWAYS_SHOW
+        self.set_idle()
+      else
+        if self.playing || self.label != "IDLE" self.set_idle() end
+        self.request_next()
+      end
+      return
+    end
+
+    var ident = data.find("i")
+    var title = data.find("t")
+    var value = data.find("g")
+    if type(ident) != "string" || type(title) != "string" return end
+    if size(ident) == 0 || size(title) == 0 return end
+    if size(ident) > 160 || size(title) > 120 return end
+    if type(value) != "int" && type(value) != "real" return end
+    value = clamp(int(value), -1, 24)
+
+    var stamp = now_ms()
+    var is_new = ident != self.identity
+    var calm = data.find("m") == true
+    var text_changed = title != self.label || calm != self.reduced_motion
+    if calm != self.reduced_motion self.record_at = stamp end
+    self.reduced_motion = calm
+    self.playing = true
+    self.received = stamp
+    self.identity = ident
+    if is_new self.last_shown = 0 end
+
+    # Translate metadata once per change. Each entry is one vertical five-pixel
+    # column, so draw() never has to measure or reshape glyphs while animating.
+    # Glyphs are proportional and have exactly one blank column between them.
+    if text_changed
+      var next_columns = []
+      for i : 0 .. size(title) - 1
+        var char = title[i]
+        var index = string.find(self.alphabet, title[i])
+        if index < 0 index = 43 end
+        var bits = self.glyphs[index]
+
+        if char == "M"
+          # The only five-column letter; its packed 3x5 fallback cannot express
+          # the diagonal shoulders cleanly.
+          next_columns.push(31)
+          next_columns.push(8)
+          next_columns.push(4)
+          next_columns.push(8)
+          next_columns.push(31)
+        else
+          var width = 3
+          var offset = 0
+          if char == "I" || char == "." || char == "'" || char == ":" || char == "!"
+            width = 1
+            offset = 1
+          elif char == " "
+            width = 2
+          elif char == "," || char == "("
+            width = 2
+          elif char == ")"
+            width = 2
+            offset = 1
+          end
+
+          for col : 0 .. width - 1
+            var column = 0
+            for row : 0 .. 4
+              if (bits & (1 << (14 - row * 3 - offset - col))) != 0
+                column = column | (1 << (4 - row))
+              end
+            end
+            next_columns.push(column)
+          end
+        end
+        if i < size(title) - 1 next_columns.push(0) end
+      end
+      self.label = title
+      self.columns = next_columns
+      self.text_w = size(next_columns)
+      self.cards = []
+      if calm && self.text_w > 23
+        # Packed start*32+width cards keep whole glyphs and prefer word breaks.
+        # Only calm mode allocates offsets; pixels stay in the column cache.
+        var first = 0
+        var last_space = -1
+        var column = 0
+        for i : 0 .. size(title) - 1
+          var char = title[i]
+          var width = char == "M" ? 5 : 3
+          if char == "I" || char == "." || char == "'" || char == ":" || char == "!"
+            width = 1
+          elif char == " " || char == "," || char == "(" || char == ")"
+            width = 2
+          end
+          if column + width - first > 23
+            if char == " "
+              self.cards.push(first * 32 + column - first - 1)
+              first = column + width + 1
+            elif last_space >= first
+              self.cards.push(first * 32 + last_space - first - 1)
+              first = last_space + 3
+            else
+              self.cards.push(first * 32 + column - first - 1)
+              first = column
+            end
+            last_space = -1
+          end
+          if char == " " last_space = column end
+          column += width + 1
+        end
+        if self.text_w > first self.cards.push(first * 32 + self.text_w - first) end
+      end
+    end
+    if is_new || text_changed self.reset_scroll(stamp) end
+    if value != self.progress_value
+      var next_rail = []
+      # Keep the 0..24 bridge contract; round to 23 visible cells beside x8.
+      var amount = (value * 23 + 12) / 24
+      if amount > 0
+        for i : 0 .. amount - 1
+          var color = 0xFFB72F
+          if amount > 1
+            var q = i * 2.0 / (amount - 1)
+            if q <= 1.0
+              color = rgb(int(255 - 15 * q + 0.5), int(183 - 61 * q + 0.5), int(47 + 3 * q + 0.5))
+            else
+              q -= 1.0
+              color = rgb(int(240 + 15 * q + 0.5), int(122 - 40 * q + 0.5), int(50 + 67 * q + 0.5))
+            end
+          end
+          next_rail.push(color)
+        end
+      end
+      self.rail = next_rail
+      self.progress_value = value
+      self.cap_start = stamp
+    end
+    if is_new rotation.show() end
+  end
+
+  def loop()
+    var stamp = now_ms()
+    # About six missed replies make old media ineligible for the rotation.
+    if self.playing && self.received >= 0 && stamp - self.received > 5500
+      if ALWAYS_SHOW
+        self.set_idle()
+      else
+        self.set_idle()
+        self.request_next()
+      end
+    end
+    if !self.in_flight && stamp >= self.next_poll
+      self.next_poll = stamp + 1000
+      self.in_flight = true
+      http.get(self.url, / b, st -> self.on_state(b, st))
+    end
+  end
+
+  def should_show()
+    if ALWAYS_SHOW return true end
+    var fresh = self.playing && self.received >= 0 && now_ms() - self.received <= 5500
+    var due = self.visible || self.last_shown == 0 || now_ms() - self.last_shown >= REMINDER_MS
+    return fresh && size(self.columns) > 0 && due
+  end
+
+  def duration()
+    # Captured once when this app rotates in. A fixed emergency ceiling cannot
+    # become stale if the title changes while visible; draw() normally advances
+    # a short title at 7 s or a long title after its first complete loop.
+    return 120000
+  end
+
+  def on_show()
+    self.visible = true
+    self.last_shown = now_ms()
+    self.reset_scroll(now_ms())
+    self.record_at = now_ms()
+  end
+
+  def on_hide()
+    self.visible = false
+  end
+
+  def on_button(btn)
+    # The firmware performs normal left/right navigation after this hook. Mark
+    # it first so a loop completion in the outgoing frame cannot race it.
+    if btn == "left" || btn == "right" self.advance_sent = true end
+  end
+
+  def draw()
+    clear()
+    var stamp = now_ms()
+
+    # Cool reflective rim, dark grooves and a warm paper label. The outline
+    # remains visible at the project's low-brightness channel threshold.
+    line(2,0,5,0,0x708DB8)
+    line(1,1,6,1,0x708DB8)
+    line(0,2,7,2,0x708DB8)
+    rect_fill(0,3,8,3,0x708DB8)
+    line(1,6,6,6,0x708DB8)
+    line(2,7,5,7,0x708DB8)
+    line(3,0,4,0,0xC0D9E9)
+    line(2,1,5,1,0x3D5D83)
+    line(1,2,6,2,0x283E64)
+    line(1,3,2,3,0x283E64)
+    line(5,3,6,3,0x283E64)
+    line(1,4,2,4,0x283E64)
+    line(5,4,6,4,0x283E64)
+    line(1,5,6,5,0x283E64)
+    line(2,6,5,6,0x283E64)
+    line(3,7,4,7,0x708DB8)
+    rect_fill(3,3,2,2,0x000000)
+
+    # A cream-to-coral comet and two-tone label complete one smooth revolution.
+    var pose = self.reduced_motion ? 0 : self.record_phase
+    var head = self.heads[pose]
+    var shift = ((head + 1) / 2) % 8
+    for i : 0 .. 7
+      var pos = self.label_ring[i]
+      var c = ((i - shift + 8) % 8) < 4 ? 0xF6BF5B : 0xB96342
+      pixel(pos / 8, pos % 8, c)
+    end
+    for i : 0 .. 3
+      var pos = self.groove[(head - (3 - i) + 16) % 16]
+      var c = i < 2 ? 0x719BBB : (i == 2 ? 0xBBDCEB : 0xFFF4EA)
+      pixel(pos / 8, pos % 8, c)
+    end
+
+    if self.reduced_motion && self.text_w > 23 && size(self.cards) > 0
+      var card = self.cards[self.card_index]
+      var start = card / 32
+      var width = card % 32
+      var origin = 9 + (23 - width) / 2
+      if self.card_index + 1 < size(self.cards)
+        # A quiet continuation cue sits above, never inside, the title glyphs.
+        pixel(27, 0, 0xB2ABA4)
+        pixel(29, 0, 0xB2ABA4)
+        pixel(31, 0, 0xB2ABA4)
+      end
+      for col : 0 .. width - 1
+        var bits = self.columns[start + col]
+        for row : 0 .. 4
+          if (bits & (1 << (4 - row))) != 0
+            pixel(origin + col, row + 1, 0xFFF4EA)
+          end
+        end
+      end
+    elif self.text_w <= 23
+      # Short titles stay centred, still and fully bright: edge fading is unnecessary.
+      var origin = 9 + (23 - self.text_w) / 2
+      for col : 0 .. size(self.columns) - 1
+        var bits = self.columns[col]
+        for row : 0 .. 4
+          if (bits & (1 << (4 - row))) != 0
+            pixel(origin + col, row + 1, 0xFFF4EA)
+          end
+        end
+      end
+    else
+      # The offset is frame-locked, never inferred from elapsed time. Every
+      # physical column remains unchanged for three complete draw() calls, so a
+      # delayed frame cannot cause a catch-up jump or skip an LED position.
+      var period = self.text_w + 8
+      for x : 9 .. 31
+        var source = (x - 9 + self.scroll_column) % period
+        var bits = 0
+        if source < self.text_w bits = self.columns[source] end
+        var color = 0xFFF4EA
+        if x == 9 || x == 31
+          color = 0x595552
+        elif x == 10 || x == 30
+          color = 0xB2ABA4
+        end
+        for row : 0 .. 4
+          if (bits & (1 << (4 - row))) != 0
+            pixel(x, row + 1, color)
+          end
+        end
+      end
+    end
+
+    # The rounded 23-cell fill never grows for decoration; x8 stays black.
+    if self.progress_value >= 0
+      line(9, 7, 31, 7, 0x35131F)
+      var amount = size(self.rail)
+      if amount > 0
+        for i : 0 .. amount - 1 pixel(9 + i, 7, self.rail[i]) end
+
+        # On a real bucket change the cream leader approaches, catches and lands.
+        var phase = min(2, int((stamp - self.cap_start) / 250))
+        if self.reduced_motion phase = 2 end
+        var leader = max(0, amount - 3 + phase)
+        for i : leader .. amount - 1
+          var color = i == leader ? 0xFFF4EA : (i == leader + 1 ? 0xFFD4DD : 0xFF8EA6)
+          pixel(9 + i, 7, color)
+        end
+      end
+    end
+
+    # Advance only after this entire frame has been drawn. Three completed
+    # frames always equal one physical-pixel move; there is no timer catch-up.
+    # Advance at most one pose after a completed visible draw. Slow frames and
+    # hidden intervals cannot cause catch-up jumps.
+    if self.visible && !self.reduced_motion && stamp - self.record_at >= 120
+      self.record_phase = (self.record_phase + 1) % 16
+      self.record_at = stamp
+    end
+    if !self.visible return end
+    if self.text_w <= 23 && stamp - self.scroll_start >= 7000
+      self.request_next()
+    elif self.reduced_motion && self.text_w > 23 && !self.advance_sent && stamp - self.card_at >= 2400
+      self.card_at = stamp
+      if self.card_index + 1 < size(self.cards)
+        self.card_index += 1
+      else
+        self.request_next()
+      end
+    elif !self.reduced_motion && self.text_w > 23 && !self.advance_sent && stamp - self.scroll_start >= 1000
+      self.scroll_frames += 1
+      if self.scroll_frames >= 3
+        self.scroll_frames = 0
+        self.scroll_column += 1
+        if self.scroll_column >= self.text_w + 8
+          self.scroll_column = 0
+          self.request_next()
+        end
+      end
+    end
+  end
+end
+
+return NowPlaying()

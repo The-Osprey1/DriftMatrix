@@ -219,8 +219,8 @@ RICH: dict[str, RGB] = {
     "ray_hi": (255, 221, 110), "ray_lo": (255, 90, 52),
     "limb": (202, 236, 255), "moon": (155, 153, 250), "terminator": (85, 67, 144),
     "star": (158, 221, 255),
-    "cloud_top": (174, 234, 255), "cloud": (64, 174, 244), "cloud_under": (75, 73, 153),
-    "cloud_glow": (255, 202, 139), "cloud_trail": (225, 223, 247),
+    "cloud_top": (239, 246, 255), "cloud": (147, 202, 239), "cloud_under": (60, 104, 172),
+    "cloud_glow": (255, 252, 232), "cloud_trail": (201, 228, 252),
     "storm_lit": (193, 112, 242),
     "rain": (49, 208, 255), "rain_tail": (40, 101, 200),
     "drizzle": (108, 227, 220), "snow": (221, 252, 255),
@@ -298,16 +298,17 @@ def _moon(frame, step: int, art: tuple[str, ...] = CRESCENT, stars=STARS) -> Non
             _put(frame, sx, sy, _scale(RICH["star"], level))
 
 
-CLOUD_ART = ("..TTT...", ".TCCCTT.", "TCCCCCCT", ".uuuuuu.")
-# Separate rounded banks read as overcast rather than a rectangular file icon.
-OVERCAST_ART = (".TTT....", "TCCCTTT.", ".CCCCCCu", "..uuuuu.")
+CLOUD_ART = (".TT.T...", "TCCCTT..", "TCCCCCT.", ".uuuuu..")
+# Rounded overlapping lobes leave room for a one-cell drift.
+OVERCAST_ART = ("..TT....", ".TCCTT..", "TCCCCCT.", "TCCCCCT.", ".uuuuu..")
 
 
 def _cloud(frame, top: int, step: int | None = None, art: tuple[str, ...] = CLOUD_ART,
-           under: str = "cloud_under") -> None:
+           under: str = "cloud_under", offset: int = 0) -> None:
     edge = []
     for r, row in enumerate(art):
-        for x, ch in enumerate(row):
+        for source_x, ch in enumerate(row):
+            x = source_x + offset
             y = top + r
             if ch == "T":
                 _put(frame, x, y, RICH["cloud_top"])
@@ -336,7 +337,7 @@ def _falling(frame, drops, top: int, span: int, step: int, head: str, tail: str 
             _put(frame, x, y - 1, RICH[tail])
 
 
-RAIN_DROPS = ((1, 0), (3, 1), (5, 2), (6, 0), (2, 2))
+RAIN_DROPS = ((1, 0), (4, 1), (6, 2))
 DRIZZLE_DROPS = ((1, 0), (4, 1), (6, 2), (3, 2))
 SNOW_FLAKES = ((1, 0), (4, 2), (6, 1), (3, 0))
 BOLT_PATH = (((4, 4), "bolt_edge"), ((3, 5), "bolt"), ((4, 5), "bolt_edge"), ((3, 6), "bolt"), ((2, 7), "bolt_edge"))
@@ -374,7 +375,16 @@ def _rich_frames(kind: str, is_day: bool) -> tuple[list[list[list[RGB]]], int]:
         out = []
         for step in range(8):
             frame = _rgb_blank()
-            _cloud(frame, top, step, art)
+            # A real bank drifts one cell and settles back. Shading stays tied
+            # to the upper-left light rather than a bead racing round its rim.
+            offset = (0, 0, 1, 1, 1, 1, 0, 0)[step]
+            _cloud(frame, top, None, art, offset=offset)
+            edge = [(x, y) for y in range(8) for x in range(8)
+                    if frame[y][x] == RICH['cloud_top']]
+            if edge:
+                x, y = edge[0]
+                level = (0.10, 0.22, 0.35, 0.48, 0.55, 0.40, 0.26, 0.15)[step]
+                _put(frame, x, y, _mix(RICH['cloud_top'], RICH['cloud_glow'], level))
             out.append(frame)
         return out, 240
     if kind in ("rain", "drizzle", "snow", "sleet"):
@@ -388,8 +398,8 @@ def _rich_frames(kind: str, is_day: bool) -> tuple[list[list[list[RGB]]], int]:
                 # Keep drops the same color as they move one row per beat.
                 # A small crown reflection differentiates the two falls in
                 # the six-frame loop without making every drop flash white.
-                crown_x = (2, 3, 4, 4, 3, 2)[step]
-                _put(frame, crown_x, 1, RICH["cloud_glow"])
+                _put(frame, 2, 1, _mix(RICH['cloud_top'], RICH['cloud_trail'],
+                                      (0.0, 0.15, 0.30, 0.45, 0.30, 0.15)[step]))
             elif kind == "drizzle":
                 _falling(frame, DRIZZLE_DROPS, 5, 3, step // 2, "drizzle" if step % 2 else "rain", None)
             elif kind == "snow":
