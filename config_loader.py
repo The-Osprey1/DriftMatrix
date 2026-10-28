@@ -54,15 +54,24 @@ def _constant(_value):
     raise ConfigError("JSON contains a non-finite number")
 
 
-def read_json(path: Path | str, *, label: str = "configuration") -> Any:
-    """Strict JSON with BOM support; never echo a rejected value or document."""
+def decode_json(data: bytes, *, label: str = "configuration") -> Any:
+    """Decode one immutable byte snapshot with the same strict JSON rules."""
     try:
-        return json.loads(Path(path).read_text(encoding="utf-8-sig"),
+        return json.loads(data.decode('utf-8-sig'),
                           object_pairs_hook=_object, parse_constant=_constant)
     except ConfigError:
         raise
-    except (OSError, ValueError, UnicodeError, RecursionError):
+    except (ValueError, UnicodeError, RecursionError):
         raise ConfigError(f"Cannot read valid {label} JSON") from None
+
+
+def read_json(path: Path | str, *, label: str = "configuration") -> Any:
+    """Strict JSON with BOM support; never echo a rejected value or document."""
+    try:
+        data = Path(path).read_bytes()
+    except OSError:
+        raise ConfigError(f"Cannot read valid {label} JSON") from None
+    return decode_json(data, label=label)
 
 
 def safe_path(parts) -> str:
