@@ -56,7 +56,9 @@ def test_default_canonical_wins_and_explicit_legacy_remains_explicit(tmp_path):
     legacy.write_text(json.dumps({'panel_url': BASE, 'maintenance': {'enabled': True}}))
     selected = policy.resolve_maintenance_context()
     assert selected.kind == 'canonical' and selected.path == config
-    assert selected.policy.enabled is False and selected.policy.timezone_name == 'UTC'
+    assert selected.policy.enabled is False and selected.policy.timezone_name is None
+    assert selected.summary()['timezone'] == 'host-local'
+    assert selected.summary()['configured_panel_timezone'] == 'UTC'
     explicit = policy.resolve_maintenance_context(hub_config=legacy)
     assert explicit.kind == 'legacy' and explicit.policy.enabled is True
     assert explicit.policy.timezone_name is None and explicit.explicit
@@ -131,6 +133,31 @@ def test_policy_comes_from_exact_worker_mapping_and_its_runtime_defaults(tmp_pat
         actual.low_memory_max_per_day)
     assert context.fingerprint == sha256(path.read_bytes()).hexdigest()
     assert context.summary()['runtime_config_hash'] == config.config_hash
+
+
+def test_canonical_guard_uses_the_actual_maintenance_controller_host_clock(tmp_path, monkeypatch):
+    path, _doc = canonical(tmp_path, maintenance=True, zone='Pacific/Kiritimati')
+    context = policy.resolve_maintenance_context(config=path)
+    fixed = datetime(2026, 10, 27, 21, 30)
+    class HostDateTime(datetime):
+        @classmethod
+        def now(cls):
+            return fixed
+    monkeypatch.setattr(pm, 'datetime', HostDateTime)
+    monkeypatch.setattr(hub, 'configure_logging', Mock(return_value=Mock()))
+    monkeypatch.setattr(hub, 'build_panel_client', Mock(return_value=Mock()))
+    runner = Mock()
+    monkeypatch.setattr(hub, 'UtilityHubRunner', runner)
+    settings = hub.HubConfig(network=hub.NetworkConfig(enabled=False),
+        focus=hub.FocusConfig(enabled=False), meeting=hub.MeetingConfig(enabled=False),
+        maintenance=hub.MaintenanceHubConfig(enabled=True))
+    hub.run_hub(settings, threading.Event(), timezone_name=context.canonical.panel.timezone)
+    actual = next(service for service in runner.call_args.args[0] if isinstance(service, pm.MaintenanceController))
+    assert actual.wall_now() == fixed and actual.wall_now().tzinfo is None
+    assert context.policy.timezone_name is None
+    assert context.summary()['configured_panel_timezone'] == 'Pacific/Kiritimati'
+    moment = datetime(2026, 10, 27, 2, tzinfo=timezone.utc)
+    assert policy.maintenance_local_time(moment, context.policy.timezone_name) == pm._local_time(moment.isoformat())
 
 
 @pytest.mark.parametrize('hub_enabled,maintenance_enabled', [(False, True), (True, False), (False, False)])

@@ -334,7 +334,7 @@ python script_swap.py moon weather/moon-panel.ax --expect-version 2.1 --rollback
 
 The swap tool selects canonical `driftmatrix.json` when present. Use `--config`
 for an explicit canonical file or `--hub-config` for an explicit legacy file;
-invalid selected configuration is refused. Canonical runtime paths and timezone,
+invalid selected configuration is refused. Canonical runtime paths, actual maintenance clock,
 local supervisor identity and fresh maintenance-history checks are described in
 [Canonical swap maintenance](CANONICAL_SWAP_MAINTENANCE.md).
 

@@ -57,7 +57,9 @@ class MaintenanceContext:
         return dict(kind=self.kind, config=None if self.path is None else str(self.path),
                     resolved_config=None if self.resolved_source is None else str(self.resolved_source),
                     sha256=self.fingerprint, data_dir=str(self.data_dir), panel_url=self.panel_url,
-                    timezone=self.policy.timezone_name or 'host-local', enabled=self.policy.enabled,
+                    timezone=self.policy.timezone_name or 'host-local',
+                    configured_panel_timezone=None if self.canonical is None else self.canonical.panel.timezone,
+                    enabled=self.policy.enabled,
                     runtime_config_hash=None if self.canonical is None else self.canonical.config_hash,
                     explicit=self.explicit)
 
@@ -114,7 +116,9 @@ def resolve_maintenance_context(*, config: Path | None = None, hub_config: Path 
             selected = config_loader.config_from_mapping(document, source_path=path)
             settings = hub.hub_config_from_canonical(selected)
             service_enabled = selected.services['hub'].enabled
-            data_dir, endpoint, zone = selected.runtime.data_dir, selected.panel.url, selected.panel.timezone
+            # run_hub's zoned WorkerClock is not passed to MaintenanceController.
+            # Its wall_now remains datetime.now, including in a canonical worker.
+            data_dir, endpoint, zone = selected.runtime.data_dir, selected.panel.url, None
         else:
             if not isinstance(document, dict):
                 raise MaintenancePolicyError('Selected legacy maintenance configuration must be an object')

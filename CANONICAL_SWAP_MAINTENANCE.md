@@ -30,8 +30,12 @@ panel comes from that configuration.
 Canonical maintenance is enabled only when both the Hub service and its
 maintenance option are enabled. An existing active maintenance entry still blocks
 a write even if the current configuration disables future maintenance. Canonical
-wall-clock decisions use `panel.timezone`, as the supervised Hub does; offset
-timestamps are converted to that zone. Active-entry age uses elapsed time across
+maintenance decisions retain the actual controller's host-local clock. The
+canonical `panel.timezone` reaches other Hub features, but `run_hub` does not pass
+its zoned worker clock to `MaintenanceController`. Reports distinguish the
+configured panel timezone from the effective `host-local` maintenance timezone;
+this change does not alter the Hub's reboot schedule. Offset history timestamps
+are converted to host-local time. Active-entry age uses elapsed time across
 DST changes. Older naive timestamps retain their host-local interpretation;
 ambiguous fall-back timestamps use the youngest possible age.
 
