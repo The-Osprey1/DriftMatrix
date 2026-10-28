@@ -32,8 +32,13 @@ Why this is a procedure and not one PUT (CLAUDE.md, "Panel memory")
   ``install``, so it is serialized with the other senders by ``panel_gate``
   and journaled in ``panel_events.jsonl``.  A real swap refuses to run with
   the gate off (``AWTRIX_PANEL_GATE=0`` or ``panel_gate.off``) unless
-  ``--allow-ungated`` (never permitted for unversioned identity), and holds ``script_swap.lock`` beside its report so
-  only one swap runs at a time.
+  ``--allow-ungated`` (never permitted for unversioned identity), and holds
+  ``script_swap.lock`` in the selected runtime directory for the whole run.
+* Maintenance uses the selected canonical configuration when present, with
+  explicit legacy selection available through ``--hub-config``. File identity,
+  local supervisor configuration and history are rechecked before dispatch;
+  a changed policy after partial writes pauses the procedure. See
+  CANONICAL_SWAP_MAINTENANCE.md for selection, path and coordination limits.
 
 Procedure
 ---------
@@ -77,14 +82,15 @@ Procedure
    frame taken while the disc must be on screen.  Only frames taken with the
    matrix lit before and after the capture, settled, count; with
    ``--require-dark`` the screen verdict is evidence only.
-6. Any failure after the delete rolls back: delete the new script if present
+6. A recoverable failure after the delete rolls back: delete the new script if present
    (retried every half second through a boot loop), reboot, PUT the old
    minified source once the block reaches its floor, reboot, verify.  A
    stalled NTP or restore ends the run instead of spending more reboots.  If
    the old version cannot be put back the run ends ``failed``, loudly, with
    the panel running the remaining scripts and the target page absent --
    safe, but a person has to act.  ``--rollback-now`` runs this step alone,
-   from any state, and never sends the new source.
+   from any recognized state, and never sends the new source. A policy change
+   pauses dispatch pending review; recovery does not bypass the new policy.
 
 Every step is written to the JSON report (``%LOCALAPPDATA%\AWTRIX\
 script_installs.json`` unless ``--report``/``--data-dir`` say otherwise)
@@ -138,6 +144,10 @@ import panel_gate
 import panel_maintenance as pm
 import panel_snapshot
 import sender_logging
+from maintenance_policy import (HubMaintenance, MaintenanceContext, MaintenancePolicyError,
+                                maintenance_local_time, maintenance_elapsed_seconds,
+                                resolve_maintenance_context)
+from runtime_paths import data_directory
 from panel_client import (
     APPS_PATH,
     DELETE_APP_PATH,
@@ -612,40 +622,12 @@ def _block(device: Any) -> int | None:
 # --------------------------------------------------------------- the Hub's maintenance
 
 
-@dataclass(frozen=True)
-class HubMaintenance:
-    """The parts of the Hub's maintenance config that decide when it reboots."""
-
-    enabled: bool = True
-    window_start_minute: int = 21 * 60 + 35
-    window_end_minute: int = 23 * 60
-    min_uptime_hours: float = 20.0
-    low_memory_reboot: bool = True
-    low_memory_min_free_bytes: int = 8192
-    # Not configurable in utility_hub.json; panel_maintenance's own defaults.
-    low_memory_min_free_min_uptime_minutes: float = pm.MaintenanceConfig.low_memory_min_free_min_uptime_minutes
-    low_memory_max_per_day: int = pm.MaintenanceConfig.low_memory_max_per_day
-    source: str = "defaults"
-
-
 def load_hub_maintenance(path: Path | None = None) -> HubMaintenance:
-    """Read the Hub's own config the way the Hub reads it; defaults (enabled) if that fails."""
+    """Select canonical policy by default, or an explicitly selected legacy file."""
     try:
-        import utility_hub  # heavy, and only needed here
-
-        target = path or utility_hub.default_config_path()
-        config = utility_hub.load_config(target).maintenance
-        return HubMaintenance(
-            enabled=config.enabled,
-            window_start_minute=config.window_start_minute,
-            window_end_minute=config.window_end_minute,
-            min_uptime_hours=config.min_uptime_hours,
-            low_memory_reboot=config.low_memory_reboot,
-            low_memory_min_free_bytes=config.low_memory_min_free_bytes,
-            source=str(target),
-        )
-    except Exception as error:  # noqa: BLE001 - assume the cautious default
-        return HubMaintenance(source=f"defaults ({type(error).__name__}: {error})")
+        return resolve_maintenance_context(hub_config=path).policy
+    except MaintenancePolicyError as error:
+        raise SwapAbort(str(error)) from None
 
 
 def low_memory_view(entries: list[dict[str, Any]], now: datetime, hub: HubMaintenance,
@@ -658,7 +640,7 @@ def low_memory_view(entries: list[dict[str, Any]], now: datetime, hub: HubMainte
     it has already restarted ``low_memory_max_per_day`` times in 24 h.  Minimum
     free heap only ever falls, so once this holds it holds until a reboot.
     """
-    if not hub.low_memory_reboot or not isinstance(device, Mapping):
+    if not hub.enabled or not hub.low_memory_reboot or not isinstance(device, Mapping):
         return None
     uptime = _uptime(device)
     min_free = device.get("minFreeHeapBytes")
@@ -670,7 +652,7 @@ def low_memory_view(entries: list[dict[str, Any]], now: datetime, hub: HubMainte
     recent = 0
     for entry in entries:
         if pm._is_low_memory_restart(entry) and entry.get("outcome") != pm.IN_PROGRESS:
-            at = pm._local_time(entry.get("at"))
+            at = maintenance_local_time(entry.get("at"), hub.timezone_name)
             if at is not None and since <= at <= until:
                 recent += 1
     held = pm.held_by_a_person(now, device.get("matrixPower"))
@@ -686,17 +668,29 @@ def low_memory_view(entries: list[dict[str, Any]], now: datetime, hub: HubMainte
     }
 
 
-def read_maintenance_entries(path: Path) -> tuple[list[dict[str, Any]], str | None]:
+def read_maintenance_entries(path: Path, *, strict: bool = False) -> tuple[list[dict[str, Any]], str | None]:
     """The maintenance report's entries, and a note when it could not be read."""
     try:
-        data = json.loads(Path(path).read_text(encoding="utf-8"))
+        raw = Path(path).read_bytes()
     except FileNotFoundError:
         return [], None
     except (OSError, ValueError) as error:
         return [], f"unreadable: {type(error).__name__}: {error}"
+    try:
+        if strict:
+            import config_loader
+            data = config_loader.decode_json(raw, label='maintenance history')
+        else:
+            data = json.loads(raw.decode('utf-8'))
+    except (ValueError, UnicodeError):
+        return [], 'unreadable: invalid maintenance history JSON'
     if not isinstance(data, Mapping):
         return [], "unreadable: not an object"
     history = data.get("history")
+    if strict and (history is not None and not isinstance(history, list)
+                   or isinstance(history, list) and any(not isinstance(item, Mapping) for item in history)
+                   or data.get('last') is not None and not isinstance(data['last'], Mapping)):
+        return [], 'unreadable: invalid maintenance history structure'
     entries = [entry for entry in history if isinstance(entry, Mapping)] if isinstance(history, list) else []
     last = data.get("last")
     if isinstance(last, Mapping) and last not in entries:
@@ -725,6 +719,7 @@ def maintenance_view(
     hub: HubMaintenance,
     uptime_seconds: int | None,
     window: tuple[datetime, datetime] | None = None,
+    *, wall_now: datetime | None = None,
 ) -> dict[str, Any]:
     """What the Hub's maintenance is doing, and whether a nightly reboot is still to come.
 
@@ -735,7 +730,7 @@ def maintenance_view(
     in_progress: tuple[datetime, dict[str, Any]] | None = None
     nightly_done: dict[str, Any] | None = None
     for entry in entries:
-        at = pm._local_time(entry.get("at"))
+        at = maintenance_local_time(entry.get("at"), hub.timezone_name)
         if at is None:
             continue
         if entry.get("outcome") == pm.IN_PROGRESS:
@@ -764,11 +759,12 @@ def maintenance_view(
     }
     if in_progress is not None:
         at, entry = in_progress
+        age = maintenance_elapsed_seconds(wall_now, entry.get('at')) if wall_now is not None else (now - at).total_seconds()
         view["in_progress"] = {
             "at": entry.get("at"),
             "kind": entry.get("kind") or "nightly",
-            "age_seconds": round((now - at).total_seconds()),
-            "stale": now - at > STALE_IN_PROGRESS,
+            "age_seconds": None if age is None else round(age),
+            "stale": age is not None and age > STALE_IN_PROGRESS.total_seconds(),
         }
     return view
 
@@ -929,6 +925,9 @@ class SwapOptions:
     maintenance_report: Path
     base_url: str = AWTRIX
     hub_config: Path | None = None
+    canonical_config: Path | None = None
+    maintenance_context: MaintenanceContext | None = None
+    maintenance_report_explicit: bool = True
     dry_run: bool = False
     check_only: bool = False
     require_dark: bool = False
@@ -1025,6 +1024,7 @@ class ScriptSwap:
             "rollback_now": bool(options.rollback_now),
             "argv": list(options.argv),
             "target": options.target,
+            "base_url": self.client.base_url,
             "started": started.isoformat(timespec="seconds"),
             "finished": None,
             "outcome": IN_PROGRESS,
@@ -1196,6 +1196,18 @@ class ScriptSwap:
     # ------------------------------------------------------------ entry point
 
     def run(self) -> int:
+        try:
+            self._select_maintenance()
+        except (MaintenancePolicyError, SwapAbort) as error:
+            self.logger.error('Maintenance selection refused: %s', error)
+            return self._finish(ABORTED, EXIT_ABORTED, error=str(error))
+        context = self.opts.maintenance_context
+        if context is not None:
+            with data_directory(context.data_dir):
+                return self._run_locked()
+        return self._run_locked()
+
+    def _run_locked(self) -> int:
         lock = None
         if not self.read_only:
             try:
@@ -1235,8 +1247,9 @@ class ScriptSwap:
                 self._release_lock(lock)
 
     def _acquire_lock(self) -> int:
-        """One swap at a time: an exclusive OS lock beside the report for the whole run."""
-        path = self.report.path.parent / LOCK_NAME
+        """Hold an OS lock in the selected runtime (legacy injected callers: report directory)."""
+        context = self.opts.maintenance_context
+        path = (context.data_dir if context is not None else self.report.path.parent) / LOCK_NAME
         try:
             path.parent.mkdir(parents=True, exist_ok=True)
             fd = os.open(path, os.O_RDWR | os.O_CREAT, 0o644)
@@ -1455,6 +1468,12 @@ class ScriptSwap:
         return None
 
     def _same_sources(self, entry: Mapping[str, Any]) -> bool:
+        if self.opts.maintenance_context is not None and self.opts.maintenance_context.kind == 'canonical':
+            if entry.get('base_url') != self.opts.maintenance_context.panel_url:
+                return False
+            selection = entry.get('maintenance_selection')
+            if not isinstance(selection, Mapping) or selection.get('data_dir') != str(self.opts.maintenance_context.data_dir):
+                return False
         def key(summary: Any):
             if not isinstance(summary, Mapping):
                 return None
@@ -1550,18 +1569,80 @@ class ScriptSwap:
         self.entry["baseline"] = dict(baseline)
 
     def _hub_maintenance(self) -> HubMaintenance:
-        if self.hub is None:
-            self.hub = load_hub_maintenance(self.opts.hub_config)
+        self._select_maintenance()
+        self._assert_policy_unchanged()
         return self.hub
+
+    def _select_maintenance(self) -> None:
+        o = self.opts
+        context = o.maintenance_context
+        if context is not None and 'maintenance_selection' in self.entry:
+            return
+        if context is None and (self.hub is None or o.canonical_config is not None or o.hub_config is not None):
+            context = resolve_maintenance_context(config=o.canonical_config, hub_config=o.hub_config,
+                                                   panel_url=self.client.base_url)
+            o.maintenance_context = context
+        if context is not None:
+            import config_loader
+            try:
+                endpoint = config_loader.normalize_panel_url(self.client.base_url)
+            except config_loader.ConfigError:
+                raise MaintenancePolicyError('Invalid panel URL for selected maintenance configuration') from None
+            if context.panel_url is not None and context.panel_url != endpoint:
+                raise MaintenancePolicyError('--panel disagrees with selected maintenance configuration')
+            observed = context.assert_unchanged()
+            self.hub = context.policy
+            self.entry['base_url'] = context.panel_url or self.client.base_url
+            self.entry['maintenance_selection'] = context.summary()
+            self.entry['maintenance_selection']['history'] = str(o.maintenance_report)
+            self.entry['maintenance_selection']['supervisor'] = observed
+
+    def _assert_policy_unchanged(self):
+        context = self.opts.maintenance_context
+        if context is not None:
+            try:
+                observed = context.assert_unchanged()
+                self.entry['maintenance_selection']['supervisor'] = observed
+            except MaintenancePolicyError as error:
+                exception = SwapPaused if self.writes else SwapAbort
+                raise exception(str(error)) from None
+
+    def _write_guard(self, intent: Callable[[], None], **legacy_options):
+        context = self.opts.maintenance_context
+        def checked_intent():
+            if context is not None:
+                self._assert_policy_unchanged()
+                device = self._device()
+                reasons, _view = self._maintenance_reasons(device, imminent_only=True)
+                if reasons:
+                    exception = SwapPaused if self.writes else SwapAbort
+                    raise exception('Maintenance changed before dispatch: ' + '; '.join(reasons))
+                if self.opts.require_dark and device.get('matrixPower') is not False:
+                    exception = SwapPaused if self.writes else SwapAbort
+                    raise exception('Matrix is no longer confirmed dark before dispatch')
+                need = legacy_options.get('minimum_block')
+                if need is not None and (_block(device) is None or _block(device) < need):
+                    raise SwapError(f'Fresh install block is below {need} before dispatch')
+            intent()
+        if self.old.unversioned:
+            return self._legacy_guard(checked_intent, **legacy_options)
+        return (lambda _gate: checked_intent()) if context is not None else None
 
     def _maintenance_reasons(self, device: Any, window: tuple[datetime, datetime] | None = None, *,
                              imminent_only: bool = False) -> tuple[list[str], dict[str, Any]]:
         """Why a Hub reboot could race this run; ``imminent_only`` drops a nightly that is not near."""
         hub = self._hub_maintenance()
-        entries, note = read_maintenance_entries(self.opts.maintenance_report)
-        now = _naive(self._now())
-        view = maintenance_view(entries, now, hub, _uptime(device), window)
+        entries, note = read_maintenance_entries(self.opts.maintenance_report,
+                                                  strict=self.opts.maintenance_context is not None)
+        now = maintenance_local_time(self._now(), hub.timezone_name)
+        uncertain = any(entry.get('outcome') == pm.IN_PROGRESS
+                        and maintenance_local_time(entry.get('at'), hub.timezone_name) is None for entry in entries)
+        if (note or uncertain) and self.opts.maintenance_context is not None:
+            exception = SwapPaused if self.writes else SwapAbort
+            raise exception('Selected maintenance history is unreadable; no safe dispatch policy can be established')
+        view = maintenance_view(entries, now, hub, _uptime(device), window, wall_now=self._now())
         view["config"] = hub.source
+        view['timezone'] = hub.timezone_name or 'host-local'
         if note:
             view["report_note"] = note
         reasons = []
@@ -1621,7 +1702,7 @@ class ScriptSwap:
             if reasons and reasons != last:
                 self.logger.info("Still waiting: %s", "; ".join(reasons))
                 last = reasons
-        if view["nightly_done"] is None and _naive(self._now()) >= window[1]:
+        if view["nightly_done"] is None and maintenance_local_time(self._now(), self._hub_maintenance().timezone_name) >= window[1]:
             self._warn(f"the maintenance window closed at {window[1]:%H:%M} with no nightly entry in "
                        "maintenance.json (is the Hub running?); going ahead, since no nightly reboot can "
                        "race this run now")
@@ -1823,7 +1904,7 @@ class ScriptSwap:
             expected_source = self.old if expect_version == self.old.version else self.new if expect_version == self.new.version else None
             if expected_source is None:
                 raise SwapError(f'Unrecognized expected version for exact-identity DELETE: {expect_version!r}')
-        guard = self._legacy_guard(intent, expected=expected_source) if self.old.unversioned else None
+        guard = self._write_guard(intent, expected=expected_source)
         if guard is None:
             intent()
         try:
@@ -1864,7 +1945,7 @@ class ScriptSwap:
         uptime = _uptime(device)
         if uptime is None or uptime < FRESH_BOOT_SECONDS:
             return False
-        return pm.held_by_a_person(_naive(self._now()), True)
+        return pm.held_by_a_person(maintenance_local_time(self._now(), self._hub_maintenance().timezone_name), True)
 
     def _await_dark(self, device: Any) -> Any:
         """Under --require-dark, hold a reboot while a person holds the matrix lit; pause if they keep it."""
@@ -1896,9 +1977,7 @@ class ScriptSwap:
             self.logger.info("Rebooting the panel: %s.", purpose)
         if self.old.unversioned and self.opts.target in expect and expected_source is None:
             raise SwapError('Exact-identity verification reboot requires its expected source')
-        guard = (self._legacy_guard(intent, expected=expected_source,
-                                     absent=self.opts.target not in expect)
-                 if self.old.unversioned else None)
+        guard = self._write_guard(intent, expected=expected_source, absent=self.opts.target not in expect)
         if guard is None:
             intent()
         try:
@@ -2059,7 +2138,7 @@ class ScriptSwap:
                               "to resume.")
             self._step("put", version=src.version, bytes=src.size, sha256=src.sha256, block=block)
             self.logger.info("Installing %s %s (%d B).", t, src.version, src.size)
-        guard = self._legacy_guard(intent, absent=True, minimum_block=need) if self.old.unversioned else None
+        guard = self._write_guard(intent, absent=True, minimum_block=need)
         if guard is None:
             intent()
         try:
@@ -2393,7 +2472,7 @@ class ScriptSwap:
                         self._panel_state(f"DELETE {t} sent during a boot loop: {t} may be deleted. "
                                           "Re-run the same command to resume.")
                         self._step("delete", version=None, boot_loop=True)
-                guard = self._legacy_guard(intent) if self.old.unversioned else None
+                guard = self._write_guard(intent)
                 if guard is None:
                     intent()
                 try:
@@ -2434,17 +2513,23 @@ class ScriptSwap:
     def _rollback_command(self) -> str:
         """Restore from a recognized state, retaining the source identity contract."""
         t, old, new = self.opts.target, self.old, self.new
-        if old.unversioned:
+        context = self.opts.maintenance_context
+        if old.unversioned or context is not None:
             o = self.opts
             argv = [t, new.path, '--expect-version', new.version, '--expect-sha256', new.sha256,
-                    '--rollback', old.path, '--rollback-version', UNVERSIONED,
-                    '--rollback-installed-sha256', old.installed_sha256, '--rollback-sha256', old.sha256,
+                    '--rollback', old.path, '--rollback-version', old.version, '--rollback-sha256', old.sha256,
                     '--panel', o.base_url, '--report', str(o.report_path), '--snapshot-root', str(o.snapshot_root),
-                    '--maintenance-report', str(o.maintenance_report), '--firmware', o.firmware,
+                    '--firmware', o.firmware,
                     '--boot-timeout', str(o.boot_timeout), '--settle-timeout', str(o.settle_timeout),
                     '--screen-seconds', str(o.screen_seconds), '--rollback-reboots', str(o.rollback_reboots),
                     '--max-wait-minutes', str(o.max_wait_minutes), '--rollback-now']
-            if o.hub_config is not None:
+            if old.unversioned:
+                argv += ['--rollback-installed-sha256', old.installed_sha256]
+            if o.maintenance_report_explicit:
+                argv += ['--maintenance-report', str(o.maintenance_report)]
+            if context is not None and context.kind == 'canonical':
+                argv += ['--config', str(context.path)]
+            elif o.hub_config is not None:
                 argv += ['--hub-config', str(o.hub_config)]
             if o.require_dark:
                 argv += ['--require-dark']
@@ -2837,7 +2922,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--allow-ungated", action="store_true",
                         help="write even though panel_gate is off (AWTRIX_PANEL_GATE=0 or panel_gate.off)")
     parser.add_argument("--no-fidelity", action="store_true", help="skip readback and screen checks")
-    parser.add_argument("--panel", default=AWTRIX)
+    parser.add_argument("--panel", default=None, help="panel URL; defaults to selected configuration, otherwise the legacy default")
     parser.add_argument("--data-dir", type=Path, default=None,
                         help="report, snapshots and log go here (default %%LOCALAPPDATA%%\\AWTRIX); "
                              "--dry-run and --check-only write no file unless this or --report is given")
@@ -2845,7 +2930,9 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--snapshot-root", type=Path, default=None)
     parser.add_argument("--maintenance-report", type=Path, default=None,
                         help="the Hub's maintenance.json (read only)")
-    parser.add_argument("--hub-config", type=Path, default=None, help="the Hub's utility_hub.json (read only)")
+    selection = parser.add_mutually_exclusive_group()
+    selection.add_argument('--config', type=Path, default=None, help='canonical driftmatrix.json (read only; default when present)')
+    selection.add_argument("--hub-config", type=Path, default=None, help="explicit legacy utility_hub.json (read only)")
     parser.add_argument("--firmware", default=EXPECTED_FIRMWARE)
     parser.add_argument("--boot-timeout", type=float, default=BOOT_TIMEOUT_SECONDS)
     parser.add_argument("--settle-timeout", type=float, default=SETTLE_TIMEOUT_SECONDS)
@@ -2860,19 +2947,28 @@ def options_from_args(args: argparse.Namespace, argv: list[str]) -> tuple[SwapOp
     A dry run or a check without ``--data-dir``/``--report`` still reads the
     default report (to plan from its history) but writes no file anywhere.
     """
-    data_dir = args.data_dir or sender_logging.log_folder()
+    context = resolve_maintenance_context(config=args.config, hub_config=args.hub_config, panel_url=args.panel)
+    import config_loader
+    try:
+        panel = config_loader.normalize_panel_url(args.panel or context.panel_url or AWTRIX)
+    except config_loader.ConfigError:
+        raise MaintenancePolicyError('Invalid selected panel URL') from None
+    data_dir = (args.data_dir or context.data_dir).expanduser().resolve()
     read_only = args.dry_run or args.check_only
     write_files = not read_only or args.data_dir is not None or args.report is not None
     options = SwapOptions(
         target=args.target,
-        new_path=resolve_source(args.source),
+        new_path=resolve_source(args.source).expanduser().resolve(),
         expect_version=args.expect_version,
-        rollback_path=resolve_source(args.rollback),
+        rollback_path=resolve_source(args.rollback).expanduser().resolve(),
         rollback_version=args.rollback_version,
-        report_path=args.report or data_dir / REPORT_NAME,
-        snapshot_root=args.snapshot_root or data_dir / "backups",
-        maintenance_report=args.maintenance_report or pm.default_report_path(),
-        base_url=args.panel,
+        report_path=(args.report or data_dir / REPORT_NAME).expanduser().resolve(),
+        snapshot_root=(args.snapshot_root or data_dir / "backups").expanduser().resolve(),
+        maintenance_report=(args.maintenance_report or context.data_dir / 'maintenance.json').expanduser().resolve(),
+        maintenance_report_explicit=args.maintenance_report is not None,
+        maintenance_context=context,
+        canonical_config=args.config,
+        base_url=panel,
         hub_config=args.hub_config,
         dry_run=args.dry_run,
         check_only=args.check_only,
@@ -2905,7 +3001,11 @@ def main(argv: list[str] | None = None, *, session: Any | None = None, clock: An
     if not SCRIPT_NAME.fullmatch(args.target):
         print(f"invalid script name {args.target!r}", file=sys.stderr)
         return 2
-    options, data_dir = options_from_args(args, argv)
+    try:
+        options, data_dir = options_from_args(args, argv)
+    except MaintenancePolicyError as error:
+        print(f'Maintenance selection refused: {error}', file=sys.stderr)
+        return EXIT_ABORTED
     logger = configure_logging(data_dir)
     swap = ScriptSwap(options, session=session, clock=clock, hub_maintenance=hub_maintenance, logger=logger)
     return swap.run()

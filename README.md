@@ -332,6 +332,12 @@ python weather/minify_ax.py weather/moon-panel.ax --out build/moon.min.ax
 python script_swap.py moon weather/moon-panel.ax --expect-version 2.1 --rollback weather/moon-panel-v2.0.ax --rollback-version 2.0 --dry-run
 ```
 
+The swap tool selects canonical `driftmatrix.json` when present. Use `--config`
+for an explicit canonical file or `--hub-config` for an explicit legacy file;
+invalid selected configuration is refused. Canonical runtime paths and timezone,
+local supervisor identity and fresh maintenance-history checks are described in
+[Canonical swap maintenance](CANONICAL_SWAP_MAINTENANCE.md).
+
 After the snapshot and preflight are validated, removing `--dry-run` performs the guarded replacement and may reboot the panel. Use the source and version actually installed for `--rollback` and `--rollback-version`; do not assume the example matches your device.
 
 ### 5. Running Tests

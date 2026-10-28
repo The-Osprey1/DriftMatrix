@@ -135,3 +135,13 @@ source identities. The original reference is unchanged. Fake-panel tests include
 the real Ocean files and execution of the generated failure-recovery recipe.
 This enables review of adoption tooling; live identity, maintenance-policy
 selection, visual approval and physical acceptance remain separate requirements.
+
+## Canonical swap maintenance follow-up
+
+The staged swap tool now uses the canonical Hub mapping, runtime state directory
+and configured timezone. It records selection provenance, rejects invalid selected
+files, checks the selected local supervisor identity and rereads policy/history
+before dispatch. Configuration changes after a partial swap pause recovery until
+the new policy is reviewed. See `CANONICAL_SWAP_MAINTENANCE.md`. This completes the
+selection implementation gap; current live identity, competing-process checks,
+visual review, memory validation and guarded physical adoption remain open.

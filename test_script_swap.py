@@ -634,7 +634,7 @@ def test_nightly_window_contains_or_follows_now() -> None:
     assert (start, end) == (datetime(2026, 10, 9, 23, 0), datetime(2026, 10, 10, 2, 0))
 
 
-def test_load_hub_maintenance_uses_the_hub_parser_and_falls_back_enabled(tmp_path: Path) -> None:
+def test_load_hub_maintenance_uses_the_hub_parser_and_refuses_invalid_selection(tmp_path: Path) -> None:
     config = tmp_path / "utility_hub.json"
     config.write_text(json.dumps({"maintenance": {"enabled": True, "window_start": "21:00",
                                                   "window_end": "22:30", "min_uptime_hours": 12}}),
@@ -643,8 +643,8 @@ def test_load_hub_maintenance_uses_the_hub_parser_and_falls_back_enabled(tmp_pat
     assert (hub.enabled, hub.window_start_minute, hub.window_end_minute, hub.min_uptime_hours) == (
         True, 21 * 60, 22 * 60 + 30, 12)
     config.write_text("{not json", encoding="utf-8")
-    fallback = ss.load_hub_maintenance(config)
-    assert fallback.enabled and fallback.source.startswith("defaults")
+    with pytest.raises(ss.SwapAbort, match='Cannot validate selected legacy'):
+        ss.load_hub_maintenance(config)
 
 
 # --------------------------------------------------------------- failures and rollback

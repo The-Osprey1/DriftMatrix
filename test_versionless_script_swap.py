@@ -17,6 +17,11 @@ ORIGINAL_PIN = sha256(LEGACY.encode()).hexdigest()
 UPLOAD_PIN = sha256(minify(LEGACY).encode()).hexdigest()
 
 
+@pytest.fixture(autouse=True)
+def _isolated_configuration(tmp_path, monkeypatch):
+    monkeypatch.setenv('LOCALAPPDATA', str(tmp_path / 'localappdata'))
+
+
 def legacy_swap(tmp_path, panel=None, clock=None, **options):
     clock = clock or FakeClock()
     panel = panel or FakePanel(clock, moon=LEGACY)

@@ -82,6 +82,7 @@ Read-only preflight example, from the repository checkout:
 
 ```powershell
 & 'C:/Users/devyn/anaconda3/python.exe' -X utf8 script_swap.py ocean ocean-v3.ax `
+  --config "$env:LOCALAPPDATA/AWTRIX/driftmatrix.json" `
   --expect-version 3.0 --rollback ocean.ax --rollback-version unversioned `
   --rollback-installed-sha256 5000462ec6ea5f02a831331bd71e77c81e244c50a271afc33bca6de9adc50b7f `
   --rollback-sha256 c7dbc2034d3b668aaf8cf935fe24cfb1851cde5a25c3f9f99d7a973f9bee3e38 `
@@ -91,6 +92,12 @@ Read-only preflight example, from the repository checkout:
 `--dry-run` performs no panel writes or snapshot. Without an explicit report/data
 directory, it writes no local report either. Review the selected maintenance
 policy and firmware; this example does not authorize a live replacement.
+
+Canonical policy selection, runtime-scoped state and recovery checks are now
+implemented in the follow-up described in `CANONICAL_SWAP_MAINTENANCE.md`.
+The full-suite result below records the original identity change; the follow-up
+adds independent maintenance-policy regression coverage. A policy change after a
+partial run pauses dispatch until the selected configuration has been reviewed.
 
 ## Verification and remaining limits
 

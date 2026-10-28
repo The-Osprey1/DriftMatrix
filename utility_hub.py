@@ -1244,13 +1244,18 @@ def main(stop_event=None) -> int:
                      stop_event or threading.Event(), lambda: run_hub(config, stop_event))
 
 
-@worker_adapter("hub")
-def run_worker(config: DriftMatrixConfig, stop_event: threading.Event) -> int:
+def hub_config_from_canonical(config: DriftMatrixConfig) -> HubConfig:
+    """Share the worker's exact canonical mapping with offline policy tools."""
     value = config.to_mapping()["services"]["hub"]["options"]
     value["panel_url"] = config.panel.url
     value["quiet_hours"] = dict(config.panel.quiet_hours)
     value.setdefault("next_up", {})["timezone"] = config.panel.timezone
-    run_hub(config_from_mapping(value), stop_event, timezone_name=config.panel.timezone)
+    return config_from_mapping(value)
+
+
+@worker_adapter("hub")
+def run_worker(config: DriftMatrixConfig, stop_event: threading.Event) -> int:
+    run_hub(hub_config_from_canonical(config), stop_event, timezone_name=config.panel.timezone)
     return 0
 
 
