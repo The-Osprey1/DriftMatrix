@@ -56,7 +56,7 @@ Weather/AQI animation.
 
 ## Verification and resource limits
 
-**3,163 local tests passed in 68.07 seconds**, including **30 new cases**, with
+**3,163 local tests passed in 64.79 seconds**, including **30 new cases**, with
 zero failures, errors or skips. Coverage includes bounded cloud geometry, rain
 spacing, Companion expression/wave, fixed GPU shell/contacts, adjacent vinyl poses,
 exact media lane/exit parity, reduced/hidden motion, lit-side-only Moon texture,

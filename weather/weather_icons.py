@@ -298,9 +298,9 @@ def _moon(frame, step: int, art: tuple[str, ...] = CRESCENT, stars=STARS) -> Non
             _put(frame, sx, sy, _scale(RICH["star"], level))
 
 
-CLOUD_ART = ("..TT....", ".TCCT...", "TCCCCCT.", ".uuuuu..")
-# Separate rounded banks read as overcast rather than a rectangular file icon.
-OVERCAST_ART = ("...TT...", "..TCCCT.", ".TTCCCu.", "TCCCCCT.", ".uuuuu..")
+CLOUD_ART = (".TT.T...", "TCCCTT..", "TCCCCCT.", ".uuuuu..")
+# Rounded overlapping lobes leave room for a one-cell drift.
+OVERCAST_ART = ("..TT....", ".TCCTT..", "TCCCCCT.", "TCCCCCT.", ".uuuuu..")
 
 
 def _cloud(frame, top: int, step: int | None = None, art: tuple[str, ...] = CLOUD_ART,
