@@ -380,24 +380,28 @@ def _draw_ram(frame: Frame, value: float, phase: int) -> None:
 
 
 def _draw_gpu(frame: Frame, value: float, phase: int) -> None:
-    for x in range(1, 7):
+    for x in range(2, 6):
         frame[0][x] = GPU_SHROUD
-        frame[7][x] = GPU_SHROUD_SHADE
-    for y in range(1, 7):
+        frame[6][x] = GPU_SHROUD_SHADE
+    for y in range(2, 6):
         frame[y][0] = GPU_SHROUD
         frame[y][7] = GPU_SHROUD_SHADE
+    for x, y in ((1, 1), (6, 1), (1, 6), (6, 6)):
+        frame[y][x] = GPU_SHROUD if y < 3 else GPU_SHROUD_SHADE
+    for x in (2, 4, 5):
+        frame[7][x] = PIN_GOLD
     hot = load_colour(value)
-    # Four blades advance 15 degrees per pose. The 90-degree loop seam is
+    # Three swept blades advance 20 degrees per pose. The 120-degree loop seam is
     # identical by symmetry, so motion has one direction instead of rocking
     # between a plus and a cross. The values and load rail stay completely still.
     def blades(pose, color, *, tips=False):
-        angle = pose * math.pi / (2 * ICON_FRAME_COUNT)
-        for arm in range(4):
-            theta = angle + arm * math.pi / 2
-            for radius in (1.6, 2.6):
+        angle = pose * 2 * math.pi / (3 * ICON_FRAME_COUNT)
+        for arm in range(3):
+            for radius in (1.5, 2.3, 2.7):
+                theta = angle + arm * 2 * math.pi / 3 + radius * 0.16
                 x = round(3.5 + radius * math.cos(theta))
-                y = round(3.5 + radius * math.sin(theta))
-                frame[y][x] = hot if tips and radius == 2.6 else color
+                y = round(3.2 + radius * math.sin(theta))
+                frame[y][x] = hot if tips and radius == 2.7 else color
     blades((phase - 1) % ICON_FRAME_COUNT, (36, 96, 112))
     blades(phase % ICON_FRAME_COUNT, gamma_lerp(GPU_SHROUD, ICE, 0.25), tips=True)
     for x, y in ((3, 3), (4, 3), (3, 4), (4, 4)):

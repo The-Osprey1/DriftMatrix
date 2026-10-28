@@ -752,9 +752,9 @@ COMPANION_TONES = COMPANION_PALETTES["idle"]
 COMPANION_ART = (
     "..LLLL..",
     ".LBBBBL.",
-    "LBBBBBBS",
-    "LBBBBBBS",
-    "LBbbbbBS",
+    "LSSSSSSS",
+    "LSbbbbSS",
+    "LSbbbbSS",
     ".LbbbbS.",
     "..SSSS..",
     "..F..F..",
@@ -769,8 +769,8 @@ COMPANION_STEAM: RGB = (236, 246, 255)
 def companion_icon(mood: str = "idle") -> list[Frame]:
     """A jewel-coloured desk sprite with expressive props and a moving glow.
 
-    Eight distinct poses over a 1.92-second cycle. A highlight follows the rounded
-    shell while the body breathes, so idle never becomes a long frozen hold.
+    Eight distinct poses over a 1.92-second cycle. A shaded shell surrounds a
+    dark faceplate; breathing, glances and a small wave give the idle pose life.
     Glasses reflect left and right, a mug's steam curls, and the headset has
     a real boom mic. The dark shadow can fade at brightness 1; the lit body,
     eyes, and mood prop retain the character's silhouette.
@@ -779,10 +779,6 @@ def companion_icon(mood: str = "idle") -> list[Frame]:
     if mood_str not in ("idle", "focus", "sleep", "on_air", "rest"):
         mood_str = "idle"
     tones = COMPANION_PALETTES[mood_str]
-    # A continuous closed path; its last step is adjacent to its first. Keep
-    # it on the shell, clear of the eye and mouth pixels that carry expression.
-    shimmer_path = ((1, 2), (0, 3), (0, 4), (1, 5),
-                    (2, 5), (2, 4), (1, 4), (1, 3))
     frames = []
     for t in range(COMPANION_FRAMES):
         f = new_frame()
@@ -792,12 +788,15 @@ def companion_icon(mood: str = "idle") -> list[Frame]:
                 put_pixel(f, x, y, colour)
 
         bob = 1 if t >= (4 if mood_str == "sleep" else 5) else 0
+        # The light belongs to the object: a broad upper-left highlight and
+        # gently changing body tone, rather than a white dot orbiting the face.
+        breath = (0.96, 0.98, 1.0, 0.99, 0.97, 0.94, 0.92, 0.93)[t]
         for y, row in enumerate(COMPANION_ART):
             for x, ch in enumerate(row):
                 if ch in tones:
-                    put(x, y + (bob if y < 7 else 0), tones[ch])
-        glow_x, glow_y = shimmer_path[t]
-        put(glow_x, glow_y + bob, PEARL)
+                    colour = tones[ch] if ch in ('L', 'S', 'F') else tuple(round(c * breath) for c in tones[ch])
+                    put(x, y + (bob if y < 7 else 0), colour)
+        put(1, 1 + bob, PEARL)
         blink = t == COMPANION_FRAMES - 1
         look = (0, 1, 1, 0, -1, -1, 0, 0)[t] if mood_str == "idle" else 0
 
@@ -823,6 +822,11 @@ def companion_icon(mood: str = "idle") -> list[Frame]:
             put(6, 4 + bob, COMPANION_BLUSH)
             put(3, 5 + bob, CORAL)
             put(4, 5 + bob, CORAL)
+            # A little articulated hand lifts, pauses, then returns to the body.
+            if t in (1, 2, 3, 4):
+                hand_y = (5, 4, 4, 5)[t - 1]
+                put(7, hand_y, tones['L'])
+                put(7, hand_y + 1, tones['B'])
         elif mood_str == "focus":
             open_eyes()
             for x in range(1, 7):

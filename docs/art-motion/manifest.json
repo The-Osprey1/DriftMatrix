@@ -1,0 +1,68 @@
+{
+  "baseline": "64c586b3376f7247ed940155ec43d33e0bc550c2",
+  "host_baseline_sha256": "634791501f5477f67d2da77a6b759240b69bd04f1c7071d76e99db8f39c55452",
+  "comparison": "previous rejected proposals versus revised candidates; neither deployed",
+  "model": "existing float32 subset compiler; explicit font and HTTP/JSON adapters",
+  "physical_heap_fps": "unmeasured",
+  "sources": {
+    "moon": [
+      {
+        "path": "weather/moon-panel-v2.2.ax",
+        "sha256": "f8eee6b57bd41289c794565158ff4d000e5dd8e574da236c0efbe9cd48a8bc3d",
+        "minified_bytes": 11855,
+        "upload_sha256": "1ecec5d69fbdc798807d970f1fa1253c39b7f044b2d9fbeb633ebe77c7cb9574"
+      },
+      {
+        "path": "weather/moon-panel-v2.3.ax",
+        "sha256": "ea190295e9bcc3f6f287e22122c4828d09cb0fcc82df56262c2ae57dfa8d57e0",
+        "minified_bytes": 12277,
+        "upload_sha256": "d4d3d9706d4467952f12df970e8ab6a9e0b9f56c2efb907578a6de87ad9a48d7"
+      }
+    ],
+    "ocean": [
+      {
+        "path": "ocean-v3.ax",
+        "sha256": "36987868fd85d0045945d56e7326490cadcde387e84c29d309f0d38b772fcefa",
+        "minified_bytes": 10904,
+        "upload_sha256": "b9463a74f84262e513b9eb42976f1fa027b578d25b67ce6cf59830ec51fe2117"
+      },
+      {
+        "path": "ocean-v3.1.ax",
+        "sha256": "6c8945cef4f3c7987b1c49e170d4b41587e558f8b3522d936d23d3323394b5ae",
+        "minified_bytes": 11007,
+        "upload_sha256": "d51ba510c5f7a2a4c82b8c201bf40a37c155674aa9be647e59f6facf20e9ed1c"
+      }
+    ],
+    "media": [
+      {
+        "path": "now_playing-v2.2.ax",
+        "sha256": "9c027970cca1729e044ba4c0c320e2812de3ef10eafb1b32f7cf549b39ce315d",
+        "minified_bytes": 9553,
+        "upload_sha256": "32e79747afe0f97acac9e8e391a291260c52a4cdd93453291ae56be584e5ae26"
+      },
+      {
+        "path": "now_playing-v2.3.ax",
+        "sha256": "6f313b70502e9465201443ec515b390b40b6a24faef8a4c7a6ea84121a5f95c3",
+        "minified_bytes": 9544,
+        "upload_sha256": "63904aec8b3e924364b26022cd589a5a0be90dd8edbb84e3f3af9085256d779e"
+      }
+    ]
+  },
+  "host_max_wire_bytes": 1912,
+  "changed_host_scenes": [
+    "partly",
+    "cloudy",
+    "overcast",
+    "rain",
+    "drizzle",
+    "snow",
+    "sleet",
+    "storm",
+    "companion-idle",
+    "companion-focus",
+    "companion-rest",
+    "companion-on_air",
+    "companion-sleep",
+    "gpu"
+  ]
+}

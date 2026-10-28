@@ -1,5 +1,10 @@
 # App overhaul
 
+The art and animation revision is in `ART_MOTION_REVISION.md`. It revises fourteen
+host scenes and adds separate Ocean 3.1, Moon 2.3 and Now Playing 2.3 sources.
+The earlier proposals remain comparison references. The new art is staged for
+visual review; it has not been adopted into the running host or clock.
+
 The active objective is to revise weak apps, improve functionality and add everyday
 quality-of-life features. The user's first priority is **animations, layout and
 visual polish**. This is broader than the first visual pass below.
