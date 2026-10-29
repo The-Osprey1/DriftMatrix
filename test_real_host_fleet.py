@@ -62,14 +62,16 @@ def wait_for(predicate, process, diagnostics, timeout=35):
 
 
 @pytest.mark.parametrize('reduced_motion', [False, True], ids=['ordinary-media', 'reduced-media'])
-def test_actual_workers_publish_consume_commands_and_close_the_bridge(tmp_path, reduced_motion):
+@pytest.mark.parametrize('media_version', ['2.3', '2.4'], ids=['approved-source', 'compact-source'])
+def test_actual_workers_publish_consume_commands_and_close_the_bridge(tmp_path, reduced_motion, media_version):
     runtime = Path(os.environ.get('DRIFTMATRIX_ACCEPTANCE_RUNTIME', str(ROOT))).resolve()
+    media_source = f'now_playing-v{media_version}.ax'
     if os.environ.get('DRIFTMATRIX_ACCEPTANCE_RUNTIME'):
         assert runtime != ROOT, 'Installed acceptance must select a runtime outside the checkout'
     for name in ('supervisor.py', 'supervisor_worker.py', 'utility_hub.py', 'pc_stats_push.py',
                  'now_playing_push.py', 'firmware_compat.py', 'panel_client.py', 'panel_gate.py', 'focus_control.py',
                  'focus_controller.py', 'icon_library.py', 'desk_companion.py',
-                 'weather/weather_brief_push.py', 'weather/aqi_brief_push.py', 'weather/weather_icons.py'):
+                 'weather/weather_brief_push.py', 'weather/aqi_brief_push.py', 'weather/weather_icons.py', media_source):
         assert (runtime / name).read_text(encoding='utf-8') == (ROOT / name).read_text(encoding='utf-8')
     fixtures = tmp_path / 'fixtures' / 'tests_support'
     fixtures.mkdir(parents=True)
@@ -84,7 +86,7 @@ def test_actual_workers_publish_consume_commands_and_close_the_bridge(tmp_path, 
         media_port = reserved.getsockname()[1]
     output = tmp_path / 'process.log'
     process = None
-    with LoopbackPanel() as panel:
+    with LoopbackPanel(media_version=media_version) as panel:
         document = config_loader.example_document()
         now_minute = datetime.now(timezone.utc).hour * 60 + datetime.now(timezone.utc).minute
         quiet = (now_minute + 600) % 1440
@@ -104,7 +106,7 @@ def test_actual_workers_publish_consume_commands_and_close_the_bridge(tmp_path, 
             'request_timeout_seconds': 1, 'refresh_confirm_samples': 1}
         document['services']['media']['options'] = {'bridge_port': media_port,
             'poll_seconds': 0.1, 'allow_script_install': False, 'reduced_motion': reduced_motion,
-            'script_path': str(runtime / 'now_playing-v2.3.ax')}
+            'script_path': str(runtime / media_source)}
         for name in ('weather', 'aqi'):
             document['services'][name]['options'] = {'latitude': 1, 'longitude': 2,
                 'refresh_seconds': 3600, 'request_timeout_seconds': 1, 'static_only': True}
@@ -112,7 +114,7 @@ def test_actual_workers_publish_consume_commands_and_close_the_bridge(tmp_path, 
         config_path.write_text(json.dumps(document), encoding='utf-8')
         config = config_loader.load_config(config_path)
         config_bytes = config_path.read_bytes()
-        panel.source = now_playing_bridge.install_source((runtime / 'now_playing-v2.3.ax').read_text(encoding='utf-8'),
+        panel.source = now_playing_bridge.install_source((runtime / media_source).read_text(encoding='utf-8'),
             f'http://127.0.0.1:{media_port}{now_playing_bridge.STATE_PATH}')
         original_source = panel.source
         directory = service_runtime.scope_directory(panel.url, state)
@@ -214,7 +216,7 @@ def test_actual_workers_publish_consume_commands_and_close_the_bridge(tmp_path, 
                     if name in ('weatherbrief', 'aqibrief'):
                         assert icon.n_frames == 1
             print('HOST_ACCEPTANCE ' + json.dumps(dict(runtime=str(runtime), workers=5,
-                reduced_motion=reduced_motion, published_payloads=len(panel.published),
+                reduced_motion=reduced_motion, media_version=media_version, published_payloads=len(panel.published),
                 first_images_correct=True, focus_receipts=2, companion_focus=True,
                 source_unchanged=True, config_unchanged=True, restarts=0, escalations=0,
                 media_port_closed=True, shutdown_seconds=round(shutdown_seconds, 3),

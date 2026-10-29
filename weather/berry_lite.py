@@ -13,7 +13,7 @@ arithmetic, bitwise, comparison and logical operator with Berry's precedence
 (bitwise binds tighter than comparison), calls, members, indexing, list
 literals, ``nil true false self``, ``int() real() str() bytes()``, and the
 list/bytes methods ``push size resize`` and typed bytes ``get/geti set/seti
-getfloat/setfloat``. Same-scope local redeclarations are rejected. Anything else is a compile error,
+getfloat/setfloat`` and integer ``add``. Same-scope local redeclarations are rejected. Anything else is a compile error,
 so an unsupported construct cannot be silently misread.
 
 Semantics, as on this firmware (single-precision Berry), with one deliberate
@@ -559,6 +559,17 @@ def _make_runtime(real_type: Callable[[Any], Any], resize_fill: int) -> dict[str
         if isinstance(o, BerryObject):
             return member(o, name)(*args)
         if isinstance(o, BerryBytes):
+            if name == 'add':
+                if len(args) not in (1, 2) or type(args[0]) is not int:
+                    raise BerryError('type_error: bytes.add operands must be int')
+                width = args[1] if len(args) == 2 else 1
+                if type(width) is not int or not -4 <= width <= 4:
+                    raise BerryError('type_error: invalid bytes.add size')
+                count = abs(width)
+                if count:
+                    value = args[0] & ((1 << (count*8))-1)
+                    o.extend(value.to_bytes(count, 'big' if width < 0 else 'little'))
+                return o
             if name in ('get', 'geti', 'set', 'seti', 'getfloat', 'setfloat'):
                 reading = name.startswith('get')
                 floating = name.endswith('float')

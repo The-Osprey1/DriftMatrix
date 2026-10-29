@@ -194,3 +194,14 @@ establish ESP32 fit. The installed Moon reference is unchanged and all live
 memory, identity, maintenance, rollback and physical gates remain. See
 `MOON_COMPACT.md`. Ocean 3.2 is installed with memory and live drawing evidence;
 the user missed its physical test, so that acceptance remains pending.
+
+## Now Playing allocation follow-up
+
+The separate 2.4 source packs glyphs, title columns, signed card entries and full
+RGB progress data, then releases one-time constructor constants. Approved art,
+scrolling, reduced-motion cards and lifecycle behavior match in source execution,
+including maximum-length titles and signed card sentinels. The new sibling
+resource is packaged; real fleet acceptance covers both 2.3 and 2.4 in both motion
+modes. Upstream execution confirms a lower retained cost and matching framebuffers
+but cannot establish ESP32 fit or physical appearance. Defaults and installed
+sources are unchanged. See `MEDIA_COMPACT.md`; live adoption gates remain.
