@@ -12,7 +12,8 @@ inclusive integer ``a..b`` ranges (default increment 1), ``break``, ``continue``
 arithmetic, bitwise, comparison and logical operator with Berry's precedence
 (bitwise binds tighter than comparison), calls, members, indexing, list
 literals, ``nil true false self``, ``int() real() str() bytes()``, and the
-list/bytes methods ``push size resize``.  Anything else is a compile error,
+list/bytes methods ``push size resize`` and typed bytes ``get/geti set/seti
+getfloat/setfloat``. Same-scope local redeclarations are rejected. Anything else is a compile error,
 so an unsupported construct cannot be silently misread.
 
 Semantics, as on this firmware (single-precision Berry), with one deliberate
@@ -31,6 +32,9 @@ exception marked below:
   zero-fills grown bytes, and what this panel's build does has never been
   observed (v2.0's ``map.resize(256)`` only shows that resize sets the size);
 * indexing out of range raises (Berry's index_error).
+* typed byte accesses follow AWTRIX NG 1.2.2's byte library: full-width
+  bounds checks, negative offsets, endian selection and binary32 float storage;
+  unlike indexing, out-of-range typed reads return zero and writes do nothing.
 
 Natives (``pixel``, ``now_ms``, ...) are supplied by the caller.
 """
@@ -39,6 +43,7 @@ from __future__ import annotations
 
 import math
 import re
+import struct
 from typing import Any, Callable
 
 __all__ = ["BerryError", "BerryBytes", "Program", "compile_source"]
@@ -536,6 +541,11 @@ def _make_runtime(real_type: Callable[[Any], Any], resize_fill: int) -> dict[str
         raise BerryError(f"attribute_error: {_tname(o)} has no member '{name}'")
 
     def setmember(o, name, v):
+        if isinstance(o, type) and issubclass(o, BerryObject):
+            if not hasattr(o, name):
+                raise BerryError(f"attribute_error: class has no member '{name}'")
+            setattr(o, name, v)
+            return
         if isinstance(o, BerryObject):
             if name not in o.__berry_members__:
                 raise BerryError(f"attribute_error: {type(o).__name__} has no member '{name}'")
@@ -547,6 +557,46 @@ def _make_runtime(real_type: Callable[[Any], Any], resize_fill: int) -> dict[str
         if isinstance(o, BerryObject):
             return member(o, name)(*args)
         if isinstance(o, BerryBytes):
+            if name in ('get', 'geti', 'set', 'seti', 'getfloat', 'setfloat'):
+                reading = name.startswith('get')
+                floating = name.endswith('float')
+                minimum = 1 if reading else 2
+                if len(args) not in (minimum, minimum + 1) or type(args[0]) is not int:
+                    raise BerryError('type_error: invalid typed bytes arguments')
+                offset = args[0] if args[0] >= 0 else len(o) + args[0]
+                option = args[minimum] if len(args) > minimum else (False if floating else 1)
+                if floating:
+                    count = 4
+                    endian = '>' if truth(option) else '<'
+                else:
+                    if reading and type(option) is not int:
+                        option = 1  # Firmware get/geti ignore a non-integer optional size.
+                    if type(option) is not int or not -4 <= option <= 4:
+                        raise BerryError('type_error: invalid typed bytes size')
+                    count = abs(option)
+                    endian = '>' if option < 0 else '<'
+                fits = count > 0 and offset >= 0 and offset + count <= len(o)
+                if reading:
+                    if not fits:
+                        return RT(0) if floating else 0
+                    raw = o[offset:offset + count]
+                    if floating:
+                        return RT(struct.unpack(endian + 'f', raw)[0])
+                    # Firmware m_get uses int32_t even for unsigned 4-byte reads.
+                    return int.from_bytes(raw, 'big' if endian == '>' else 'little',
+                                          signed=name == 'geti' or count == 4)
+                value = args[1]
+                if floating:
+                    if type(value) is not int and not is_real(value):
+                        raise BerryError('type_error: setfloat needs an int or real')
+                    raw = struct.pack(endian + 'f', float(value))
+                else:
+                    if type(value) is not int:
+                        raise BerryError('type_error: set needs an int')
+                    raw = (value & ((1 << (count * 8)) - 1)).to_bytes(count, 'big' if endian == '>' else 'little')
+                if fits:
+                    o[offset:offset + count] = raw
+                return None
             if name == "size" and not args:
                 return len(o)
             if name == "resize" and len(args) == 1 and type(args[0]) is int:
@@ -775,6 +825,8 @@ class _Gen:
         kind = st[0]
         if kind == "var":
             for name, init in st[1]:
+                if name in scope.names:
+                    raise BerryError(f"syntax_error: redefinition of '{name}'")
                 value = "None" if init is None else self.expr(init, scope)
                 py = self.fresh(name)
                 scope.names[name] = py
@@ -858,6 +910,8 @@ class _Gen:
                     self.emit(3, f"object.__setattr__(self, {m!r}, None)")
                 if any(d[1] == "init" for d in defs):
                     self.emit(3, "self.init(*args)")
+                elif not members:
+                    self.emit(3, "pass")
                 for d in defs:
                     self.function(d, 2, method=True)
                 self.emit(1, f"G[{name!r}] = C_{name}")
