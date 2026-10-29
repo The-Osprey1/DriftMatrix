@@ -70,7 +70,12 @@ Procedure
    status and the JSON ``error``.
 4. Reboot, let everything restore, verify: target present, origin script,
    ``meta.version`` as expected, no error, a ``vm heap`` boot-log line for it,
-   every pre-swap script back with no error.  A target that has dropped out
+   every pre-swap script back with no error, and measured shared VM use within
+   75% of the unchanged reported script heap budget. Complete current boot
+   evidence is required before PUT and after verification; see RESIDENT_VM_BUDGET.md.
+   Recovery may restore an over-budget previous set, with an explicit warning.
+   Neither ``--no-fidelity`` nor matching new metadata bypasses the VM check.
+   A target that has dropped out
    of the rotation ends ``installed-needs-attention`` (exit 8), not ok and
    not rolled back (the rollback's own DELETE and PUT would do the same).
 5. Fidelity (best effort, never blocks success unless the page is clearly
@@ -287,7 +292,9 @@ INSTALLED = "installed"
 SCRIPT_NAME = panel_snapshot.SCRIPT_NAME
 _HEADER = re.compile(r"^#\s*@(\w+)\s*(.*?)\s*$")
 _RESTORED = re.compile(r"scripts: (\d+) restored")
-_SHARED = re.compile(r"\(shared (\d+)\)")
+_VM_LINE = re.compile(r"\[script:[^\]]+\] vm heap\b")
+_SHARED = re.compile(r"\[script:(?P<name>[A-Za-z0-9_-]+)\] vm heap \+\d+ bytes \(shared (?P<shared>\d+)\), "
+                     r"free heap \d+ -> \d+, max block \d+(?:\s|$)")
 _BOOT = re.compile(r"\bboot: AWTRIX")
 _NTP = re.compile(r"\bntp:")
 _ERROR_STATUSES = tuple(range(300, 600))
@@ -297,6 +304,7 @@ DEVICE_KEYS = (
     "freeHeapBytes",
     "minFreeHeapBytes",
     "largestFreeBlockBytes",
+    "scriptHeapBudgetBytes",
     "fps",
     "matrixPower",
     "currentApp",
@@ -599,8 +607,52 @@ def shared_total(lines: list[str]) -> int | None:
     for line in lines:
         match = _SHARED.search(line)
         if match:
-            found = int(match[1])
+            found = int(match['shared'])
     return found
+
+
+def vm_budget_view(device: Any, apps: list[dict[str, Any]], logs: Any) -> dict[str, Any]:
+    """Measured shared VM use, including VM overhead; never a source-size estimate.
+
+    A complete current boot must account for every resident. Neither a partial
+    log, an app's own '(shared N)' message nor per-script heap sums prove this.
+    The 75% ceiling is the repository policy, separate from the install block.
+    """
+    raw_budget = device.get('scriptHeapBudgetBytes') if isinstance(device, Mapping) else None
+    budget = raw_budget if type(raw_budget) is int and raw_budget > 0 else None
+    lines = boot_lines(logs)
+    shared = shared_total(lines) if lines else None
+    heap = pm.parse_boot_heap(lines) if lines else {}
+    try:
+        residents = pm._script_names(apps)
+    except ValueError:
+        residents = set()
+    native_loads = [line for line in (lines or []) if _VM_LINE.search(line)]
+    valid_loads = [_SHARED.search(line) for line in native_loads]
+    restore_positions = [i for i, line in enumerate(lines or []) if _RESTORED.search(line)]
+    complete = bool(lines and any(_BOOT.search(line) for line in lines)
+                    and residents and residents == set(heap)
+                    and all(valid_loads)
+                    and {match['name'] for match in valid_loads if match} == residents
+                    and len(restore_positions) == 1
+                    and not any(_VM_LINE.search(line) for line in lines[restore_positions[0] + 1:])
+                    and restored_count(lines) == len(residents))
+    limit = budget * 3 // 4 if budget is not None else None
+    problems = []
+    if budget is None:
+        problems.append('panel has no valid positive integer scriptHeapBudgetBytes')
+    if not complete:
+        problems.append('current boot log does not account for every restored resident script')
+    if shared is None or shared <= 0:
+        problems.append('current boot log has no valid positive shared VM total')
+    status = 'unverified' if problems else 'within-limit'
+    if not problems and shared > limit:
+        status = 'over-limit'
+        problems.append(f'shared VM use {shared:,} exceeds the 75% ceiling {limit:,} '
+                        f'of the reported {budget:,}-byte budget')
+    return {'status': status, 'adoption_ready': not problems, 'shared_bytes': shared,
+            'budget_bytes': budget, 'ceiling_bytes': limit, 'ceiling_fraction': '3/4',
+            'complete_boot': complete, 'residents': sorted(residents), 'problems': problems}
 
 
 def device_summary(device: Any) -> dict[str, Any] | None:
@@ -1333,6 +1385,7 @@ class ScriptSwap:
             "script_errors": pm.script_errors(apps),
             "boot_heap": heap,
             "shared": shared_total(lines) if lines else None,
+            "vm_budget": vm_budget_view(device, apps, logs),
             "ntp": ntp_state(logs),
             # Only a swap compares loop positions; a dry run reads nothing it does not need.
             "apploop": None if o.dry_run else self._loop_position(),
@@ -1344,8 +1397,7 @@ class ScriptSwap:
 
         resume = self._resume_point(app, state)
         if resume == INSTALLED:
-            self.logger.info("%s already reports %s with no error; nothing to do.", o.target, self.new.version)
-            return self._finish(ALREADY_INSTALLED, EXIT_OK)
+            return self._already_installed()
 
         blockers = self._maintenance_gate(device)
         if not o.dry_run:
@@ -1355,7 +1407,7 @@ class ScriptSwap:
             app, state = self._target(apps)
             resume = self._resume_point(app, state)
             if resume == INSTALLED:
-                return self._finish(ALREADY_INSTALLED, EXIT_OK)
+                return self._already_installed()
         self._set_expected(apps)
         blockers += self._preflight_blockers(apps, resume)
 
@@ -1381,6 +1433,8 @@ class ScriptSwap:
             # The target is already gone or half-done: only going on can put it back.
             return []
         blockers = []
+        if self.entry['before']['vm_budget']['budget_bytes'] is None:
+            blockers.append('cannot plan a forward install without a valid panel scriptHeapBudgetBytes')
         others = {name: error for name, error in pm.script_errors(apps).items() if name != self.opts.target}
         if others:
             blockers.append(f"other scripts already report errors {others}; the post-reboot checks would refuse "
@@ -1392,6 +1446,35 @@ class ScriptSwap:
         elif ntp != "seen":
             self._warn(f"NTP could not be confirmed from the boot log ({ntp})")
         return blockers
+
+    def _current_vm_budget(self) -> dict[str, Any]:
+        before = self._device()
+        apps = self._apps()
+        logs = self._try_read(LOGS_PATH)
+        after = self._device()
+        view = vm_budget_view(after, apps, logs)
+        view['problems'] = self._vm_problems(view)
+        if view['problems'] and view['adoption_ready']:
+            view.update(status='unverified', adoption_ready=False)
+        first, last = _uptime(before), _uptime(after)
+        first_epoch, last_epoch = self._boot_epoch(before), self._boot_epoch(after)
+        if (first is None or last is None or last < first
+                or (first_epoch is not None and last_epoch is not None
+                    and abs(last_epoch - first_epoch) > BOOT_EPOCH_TOLERANCE_SECONDS)
+                or before.get('scriptHeapBudgetBytes') != after.get('scriptHeapBudgetBytes')):
+            view['problems'].append('panel rebooted or its budget changed while reading VM evidence')
+            view.update(status='unverified', adoption_ready=False)
+        return view
+
+    def _already_installed(self) -> int:
+        view = self._current_vm_budget()
+        self.entry['current_vm_budget'] = view
+        if not view['adoption_ready']:
+            return self._finish(CHECKED_BROKEN, EXIT_CHECK_FAILED,
+                                error='shared VM budget: ' + '; '.join(view['problems']))
+        self.logger.info('%s already reports %s with verified shared VM budget; nothing to do.',
+                         self.opts.target, self.new.version)
+        return self._finish(ALREADY_INSTALLED, EXIT_OK)
 
     def _sample_dark_screen(self) -> dict[str, Any]:
         """A few framebuffer reads while the matrix is dark: what a dark framebuffer holds.
@@ -1809,6 +1892,10 @@ class ScriptSwap:
             parts = ", ".join(f"{name} +{value['vm_heap']:,} (block after {value['max_block_after']:,})"
                               for name, value in heap.items())
             lines.append(f"boot log {parts}; shared {self.entry['before'].get('shared')}")
+        view = self.entry['before']['vm_budget']
+        lines.append(f"VM guard measured baseline {view['shared_bytes']}, budget {view['budget_bytes']}, "
+                     f"75% ceiling {view['ceiling_bytes']}: {view['status']}; forward install and "
+                     "post-reboot acceptance require complete measured evidence within this ceiling")
         return lines
 
     def _dry_run(self, device: dict[str, Any], app: dict[str, Any] | None, state: str, resume: str,
@@ -2093,6 +2180,7 @@ class ScriptSwap:
             "script_errors": pm.script_errors(apps),
             "heap": heap,
             "shared": shared_total(lines) if lines else None,
+            "vm_budget": vm_budget_view(device, apps, {'lines': lines} if lines is not None else None),
             "restarts": restarts,
         }
         return Boot(reading=reading, apps=apps, scripts=scripts, heap=heap)
@@ -2111,6 +2199,9 @@ class ScriptSwap:
                       if name != self.opts.target}
             if errors:
                 return f"scripts reporting errors after the reboot: {errors}"
+            memory_problems = self._vm_problems(boot.reading['vm_budget'])
+            if memory_problems:
+                return 'shared VM budget before PUT: ' + '; '.join(memory_problems)
         block = _block(self._try_read(DEVICE_PATH))
         if block is None:
             block = boot.block
@@ -2296,6 +2387,12 @@ class ScriptSwap:
     def _verify(self, src: SourceInfo, boot: Boot) -> list[str]:
         t = self.opts.target
         problems: list[str] = []
+        memory = boot.reading['vm_budget']
+        if src is self.new:
+            problems.extend('shared VM budget: ' + reason for reason in self._vm_problems(memory))
+        elif not memory['adoption_ready']:
+            self._warn('Recovery restores the previous source; its shared VM budget remains '
+                       f"{memory['status']}: {'; '.join(memory['problems'])}. This is not adoption readiness.")
         app = find_app(boot.apps, t)
         if app is None or app.get("present") is not True:
             problems.append(f"{t} is not present after the reboot")
@@ -2335,6 +2432,8 @@ class ScriptSwap:
                               if "vm_heap" in loaded and "vm_heap" in before else None),
             "block_after": boot.block,
             "shared": boot.reading.get("shared"),
+            "vm_budget": memory,
+            "memory_policy": 'adoption' if src is self.new else 'recovery',
             "restored_via": boot.reading.get("restored_via"),
             "apploop": self._loop_position(),
             "target": self._app_summary(app),
@@ -2352,6 +2451,13 @@ class ScriptSwap:
         elif not problems and loop_before and verification["apploop"] and loop_before != verification["apploop"]:
             self._warn(f"{t}'s place in the app loop changed {loop_before} -> {verification['apploop']}; "
                        "rotation_policy.py shows and can apply the intended order")
+        return problems
+
+    def _vm_problems(self, view: dict[str, Any]) -> list[str]:
+        problems = list(view['problems'])
+        baseline_budget = self.entry['before']['vm_budget']['budget_bytes']
+        if baseline_budget is not None and view['budget_bytes'] != baseline_budget:
+            problems.append('reported script heap budget changed since preflight')
         return problems
 
     def _installed(self, src: SourceInfo) -> None:
@@ -2778,6 +2884,8 @@ class ScriptSwap:
     def _check_only(self, app: dict[str, Any] | None, state: str, device: dict[str, Any]) -> int:
         t, new = self.opts.target, self.new
         problems: list[str] = []
+        memory = self._current_vm_budget()
+        problems.extend('shared VM budget: ' + reason for reason in memory['problems'])
         if state != NEW_OK:
             problems.append(f"{t} state is {state!r}: {self._app_summary(app)}")
         heap = self.entry["before"].get("boot_heap")
@@ -2802,7 +2910,7 @@ class ScriptSwap:
                 problems.append(f"{t} never came on screen during the {self.opts.screen_seconds:g} s watch "
                                 "while the matrix was lit, so its page could not be checked and it may not be "
                                 "rotating (a long rotation can do this too: re-run with a larger --screen-seconds)")
-        self.entry["check"] = {"problems": problems}
+        self.entry["check"] = {"problems": problems, 'vm_budget': memory}
         if problems:
             for problem in problems:
                 self.logger.error("Check: %s", problem)

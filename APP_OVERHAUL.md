@@ -157,3 +157,18 @@ before dispatch. Configuration changes after a partial swap pause recovery until
 the new policy is reviewed. See `CANONICAL_SWAP_MAINTENANCE.md`. This completes the
 selection implementation gap; current live identity, competing-process checks,
 visual review, memory validation and guarded physical adoption remain open.
+
+## Host adoption and remaining resident budget
+
+The revised art direction was approved on October 28. Pinned host release
+`d9a90cd798a2` was adopted with fresh snapshots, exact resident readbacks,
+preserved configuration/state and five healthy workers. The user confirmed its
+normal rotation “Looks normal and readable.” Weather/AQI retain static safety
+settings; Ocean, Moon and Now Playing retain their previous resident sources.
+
+The next resident safeguard enforces the existing 75% shared VM policy before
+PUT and after the verification reboot, including already-installed, resumed and
+check-only paths. Missing or over-ceiling measurements cannot accept a new set;
+recovery can still restore the previous source with its memory status reported.
+See `RESIDENT_VM_BUDGET.md`. This tooling change does not install a resident
+candidate or establish its real compiled cost, FPS or physical appearance.
