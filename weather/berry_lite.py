@@ -35,6 +35,8 @@ exception marked below:
 * typed byte accesses follow AWTRIX NG 1.2.2's byte library: full-width
   bounds checks, negative offsets, endian selection and binary32 float storage;
   unlike indexing, out-of-range typed reads return zero and writes do nothing.
+* bytes are indexable but have no iterator in this firmware's byte library;
+  a for-loop over bytes raises instead of borrowing Python's bytearray iterator.
 
 Natives (``pixel``, ``now_ms``, ...) are supplied by the caller.
 """
@@ -626,7 +628,7 @@ def _make_runtime(real_type: Callable[[Any], Any], resize_fill: int) -> dict[str
     def iterate(o):
         if isinstance(o, range):
             return o
-        if isinstance(o, (list, bytearray)):
+        if isinstance(o, list):
             return list(o)
         raise BerryError(f"type_error: cannot iterate {_tname(o)}")
 
