@@ -1,5 +1,9 @@
 # Art and animation revision
 
+The user approved this revised visual direction on 2026-10-28. Live adoption
+still requires fresh snapshot/source identity, rollback, memory and physical
+verification. Approval is not a claim that these candidates are installed.
+
 This candidate gives the staged artwork stronger object shading and more
 deliberate movement. Each comparison shows the previous proposal on the left and
 the revision on the right. Neither side is a new observation of the clock.
@@ -99,4 +103,4 @@ The default renderer reads that immutable baseline:
 
 The manifest records baseline and source/upload hashes, sizes and changed scenes.
 Host frames come from actual wire payloads; resident frames come from actual
-old/new sources. Preview approval remains required before staged live adoption.
+old/new sources. Visual direction is approved; the live adoption gates remain.

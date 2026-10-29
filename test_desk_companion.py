@@ -340,6 +340,7 @@ class CompanionPushBudgetTests(unittest.TestCase):
                 session.put.return_value.status_code = 200
                 session.get.return_value.status_code = 200
                 session.get.return_value.json.side_effect = [
+                    {"uptimeSeconds": 100, "version": "1.1.2"},  # Cold image-format lookup.
                     {"uptimeSeconds": 100}, {"uptimeSeconds": 10, "resetReason": "panic"},
                 ]
                 panel = PanelClient(
@@ -377,6 +378,7 @@ class CompanionPushBudgetTests(unittest.TestCase):
                 session.post.return_value.status_code = 200
                 session.get.return_value.status_code = 200
                 session.get.return_value.json.side_effect = [
+                    {"uptimeSeconds": 100, "version": "1.1.2"},  # Cold image-format lookup.
                     {"uptimeSeconds": 100}, {"uptimeSeconds": 10, "resetReason": "software"},
                 ]
                 panel = PanelClient(
@@ -429,6 +431,8 @@ class CompanionPushBudgetTests(unittest.TestCase):
 
     def test_failed_push_retries_with_static_art_and_keeps_success_cache_empty(self):
         session, clock = MagicMock(), MagicMock()
+        session.get.return_value.status_code = 200
+        session.get.return_value.json.return_value = {"uptimeSeconds": 100, "version": "1.1.2"}
         response = MagicMock(status_code=200)
         session.put.side_effect = [requests.ConnectionError("offline"), response]
         panel = PanelClient(

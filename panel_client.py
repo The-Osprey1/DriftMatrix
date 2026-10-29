@@ -551,6 +551,15 @@ class PanelClient:
         selected = static_payload if self.static_latched and static_payload is not None else payload
         if not isinstance(selected, Mapping):
             raise TypeError("payload must be a mapping")
+        # A new Hub can publish Companion/Focus before its periodic health
+        # reporter runs. Learn the image format before that very first write.
+        # Failed reads defer only panel delivery; controllers can still commit
+        # local commands and timer state through their existing error handling.
+        if firmware_compat.inline_image_mime(selected.get('icon')) is not None:
+            with self._state_lock:
+                needs_probe = self._last_uptime is None
+            if needs_probe:
+                self.probe_device()
         return self._mutate(
             "put",
             PUSHED_APP_PATH.format(name=segment),
