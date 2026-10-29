@@ -182,3 +182,15 @@ one-time constructor constants. Its float32 source comparisons preserve the
 approved art and lifecycle. The independent upstream runtime profile shows
 lower retained allocation but does not establish ESP32 fit; all live memory,
 rollback, FPS and physical gates remain. See `OCEAN_COMPACT.md`.
+
+## Moon allocation follow-up
+
+The separate `weather/moon-panel-v2.4.ax` source packs exact numeric/colour data,
+nebula runs and disc rows, then retires its one-time constructor. Source execution
+preserves the approved 2.3 art, astronomy, label timing and lifecycle: 47 new
+regression cases and 550 identical saved frame pairs. The full suite passes 3,332
+tests. An upstream Berry profile shows reduced retained allocation but does not
+establish ESP32 fit. The installed Moon reference is unchanged and all live
+memory, identity, maintenance, rollback and physical gates remain. See
+`MOON_COMPACT.md`. Ocean 3.2 is installed with memory and live drawing evidence;
+the user missed its physical test, so that acceptance remains pending.
