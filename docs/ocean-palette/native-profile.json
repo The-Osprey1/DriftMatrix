@@ -1,0 +1,17 @@
+{
+  "runtime_sha256": "8c59a4a6cdf297c79fef2b3201d7da349d24df14d89ce266b7a2b11c37ab337a",
+  "results": [
+    {
+      "version": "3.2",
+      "retained": 20492,
+      "warm": 21640
+    },
+    {
+      "version": "3.3",
+      "retained": 20492,
+      "warm": 21640
+    }
+  ],
+  "panel_requests": 0,
+  "not_device_budget_evidence": true
+}
