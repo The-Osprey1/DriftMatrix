@@ -205,3 +205,14 @@ resource is packaged; real fleet acceptance covers both 2.3 and 2.4 in both moti
 modes. Upstream execution confirms a lower retained cost and matching framebuffers
 but cannot establish ESP32 fit or physical appearance. Defaults and installed
 sources are unchanged. See `MEDIA_COMPACT.md`; live adoption gates remain.
+
+
+## Ocean physical colour correction
+
+The user reported that Ocean 3.2 now looked entirely blue. Live source/read-only
+framebuffer inspection confirmed the deployed identity and a blue-dominant palette;
+the art revision had replaced the original green/olive environment with blue-grey.
+The separate 3.3 candidate restores original water, kelp, bubble and reef colours
+while preserving the newer visitors, motion and compact storage. See
+`OCEAN_PALETTE.md`. The user approved the restored palette preview on October 29. Guarded
+installation and physical colour verification remain.

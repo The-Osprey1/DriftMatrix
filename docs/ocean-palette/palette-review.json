@@ -1,0 +1,35 @@
+{
+  "candidate": "Ocean 3.3",
+  "changed_colour_roles": [
+    6,
+    7,
+    8,
+    15,
+    16,
+    17,
+    18,
+    19,
+    20,
+    21
+  ],
+  "water": "original ocean.ax values",
+  "reference_source": "ocean.ax",
+  "animation_state_parity": true,
+  "compared_samples": 250,
+  "seconds": 30,
+  "frame_ms": 40,
+  "candidate_minified_bytes": 9483,
+  "candidate_sha256": "c18e5aaf5277f0a1c2dc28bdafe691dd3f6ad7a2b1a76a5841e9adc185ee040e",
+  "before": {
+    "blue": 0.88546875,
+    "green": 0.088015625,
+    "warm": 0.02634375
+  },
+  "after": {
+    "blue": 0.715953125,
+    "green": 0.25753125,
+    "warm": 0.026515625
+  },
+  "panel_mutations": 0,
+  "physical_preview": false
+}
