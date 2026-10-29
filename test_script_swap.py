@@ -223,6 +223,7 @@ class FakePanel:
             "freeHeapBytes": 50_000,
             "minFreeHeapBytes": self.min_free,
             "largestFreeBlockBytes": self.block if self.restored else 100_000,
+            "scriptHeapBudgetBytes": 98_304,
             "scriptingRunning": True,
             "fps": 42,
             "matrixPower": self.power,
@@ -1350,7 +1351,7 @@ def test_a_boot_log_without_ntp_stops_the_swap_before_any_write(tmp_path: Path) 
 # -- restore signals (minor)
 
 
-def test_an_unreadable_log_after_the_boot_falls_back_to_the_inventory(tmp_path: Path) -> None:
+def test_unreadable_boot_log_allows_inventory_recovery_but_not_new_adoption(tmp_path: Path) -> None:
     clock = FakeClock()
     panel = FakePanel(clock)
     original_get, original_delete = panel.get, panel.delete
@@ -1366,8 +1367,10 @@ def test_an_unreadable_log_after_the_boot_falls_back_to_the_inventory(tmp_path: 
         return original_delete(url, timeout=timeout, **kwargs)
 
     panel.get, panel.delete = get, delete
-    assert make_swap(tmp_path, panel, clock).run() == ss.EXIT_OK
-    assert panel.moon_version() == "2.1"
+    assert make_swap(tmp_path, panel, clock).run() == ss.EXIT_ROLLED_BACK
+    assert panel.moon_version() == "2.0"
+    assert all(version != '2.1' for method, _path, version, _time in panel.writes if method == 'PUT')
+    assert last_entry(tmp_path)['verifications'][-1]['vm_budget']['status'] == 'unverified'
     booted = [step for step in last_entry(tmp_path)["steps"] if step["step"] == "booted"]
     assert [step["restored_via"] for step in booted] == ["apps", "apps"]
     assert all(step["uptime"] >= ss.RESTORE_FALLBACK_UPTIME for step in booted)
