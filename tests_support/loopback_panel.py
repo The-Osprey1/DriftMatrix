@@ -8,10 +8,11 @@ from urllib.parse import urlsplit
 
 
 class LoopbackPanel:
-    def __init__(self):
+    def __init__(self, *, media_version='2.3'):
         self.lock = threading.RLock()
         self.events, self.payloads, self.published = [], {}, []
         self.source = ''
+        self.media_version = media_version
         self.started = time.monotonic()
         owner = self
 
@@ -37,7 +38,7 @@ class LoopbackPanel:
                             largestFreeBlockBytes=90000, matrixPower=True, fps=40, currentApp='nowplaying'))
                     if path == '/api/v1/apps':
                         return self.reply({'apps': [{'name': 'nowplaying', 'origin': 'script', 'present': True,
-                            'meta': {'version': '2.3'}, 'error': None}] + [
+                            'meta': {'version': owner.media_version}, 'error': None}] + [
                             {'name': name, 'origin': 'pushed', 'present': True, 'error': None} for name in owner.payloads]})
                     if path == '/api/v1/apps/script/nowplaying':
                         return self.reply(owner.source, text=True)

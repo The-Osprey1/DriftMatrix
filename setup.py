@@ -4,7 +4,7 @@ from pathlib import Path
 from setuptools import setup
 from setuptools.command.build_py import build_py
 
-RESOURCES = ("now_playing.ax", "now_playing-v2.2.ax", "now_playing-v2.3.ax", "drift_ecosystem.json", "drift_ecosystem.schema.json")
+RESOURCES = ("now_playing.ax", "now_playing-v2.2.ax", "now_playing-v2.3.ax", "now_playing-v2.4.ax", "drift_ecosystem.json", "drift_ecosystem.schema.json")
 
 
 class RuntimeBuild(build_py):
