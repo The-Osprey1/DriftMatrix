@@ -34,8 +34,9 @@ No firmware settings or memory limits were changed.
 
 ## Fidelity and worker acceptance
 
-**3,415 local tests passed in 127.89 seconds**, zero failures, errors or skips.
-This adds 81 focused media/model cases and two additional real-fleet cases.
+**3,417 local tests passed in 124.97 seconds**, zero failures, errors or skips.
+This adds 81 focused media/model cases, two additional real-fleet cases and two
+bounded-polling regressions.
 
 The 81 new focused cases compare the actual approved and compact sources through
 the documented preview adapters. Coverage includes all accepted glyphs, randomized
@@ -110,3 +111,9 @@ exact resident identities, coordinated host template selection, explicit rollbac
 pins, canonical maintenance/Nightkeeper policy, measured compiled cost within the
 unchanged 75% ceiling, real draw/bridge/FPS checks and physical acceptance. Moon
 2.4 also remains staged; Ocean's missed physical test remains pending.
+
+The initial Windows/Python 3.12 CI run exposed a permission denial while the test
+observer read worker-owned Focus state. The polling helper now retries that read
+condition at its original bounded deadline. Separate regressions prove recovery
+after a transient denial and timeout on permanent denial. Production persistence
+and renderer behavior are unchanged.

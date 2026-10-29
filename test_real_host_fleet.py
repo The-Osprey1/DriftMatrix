@@ -55,7 +55,9 @@ def wait_for(predicate, process, diagnostics, timeout=35):
             value = predicate()
             if value:
                 return value
-        except (FileNotFoundError, json.JSONDecodeError, KeyError, requests.ConnectionError):
+        except (FileNotFoundError, PermissionError, json.JSONDecodeError, KeyError, requests.ConnectionError):
+            # Windows can deny a read briefly while a worker replaces its state.
+            # Permanent denial still fails at the same bounded deadline.
             pass
         time.sleep(0.05)
     pytest.fail('Actual host acceptance timed out: ' + diagnostics())
