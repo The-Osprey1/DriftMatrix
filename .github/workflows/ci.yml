@@ -47,3 +47,8 @@ jobs:
     - name: Run test suite (Windows)
       if: runner.os == 'Windows'
       run: python -m pytest -q -p no:cacheprovider
+
+    - name: Verify installed host fleet outside checkout
+      # Real worker loops; OS providers and upstream feeds use explicit fixtures.
+      run: >-
+        python -c "import os,tempfile,pathlib,importlib.metadata,pytest; checkout=pathlib.Path.cwd(); os.chdir(tempfile.mkdtemp(prefix='driftmatrix-installed-')); runtime=pathlib.Path(importlib.metadata.distribution('awtrix').locate_file('')).resolve(); assert runtime != checkout.resolve(); os.environ['DRIFTMATRIX_ACCEPTANCE_RUNTIME']=str(runtime); raise SystemExit(pytest.main([str(checkout/'test_real_host_fleet.py'),'-q','-s','-p','no:cacheprovider']))"

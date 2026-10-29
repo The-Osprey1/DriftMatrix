@@ -2,8 +2,15 @@
 
 The art and animation revision is in `ART_MOTION_REVISION.md`. It revises fourteen
 host scenes and adds separate Ocean 3.1, Moon 2.3 and Now Playing 2.3 sources.
-The earlier proposals remain comparison references. The new art is staged for
-visual review; it has not been adopted into the running host or clock.
+The earlier proposals remain comparison references. The user approved the new
+visual direction on 2026-10-28; it has not been adopted into the running host or
+clock. Fresh snapshot, identity, memory and physical adoption checks remain.
+
+Actual-worker acceptance is documented in `HOST_FLEET_ACCEPTANCE.md`. The combined
+run found and fixes a cold-start image-format gap before the first health probe.
+The real five-worker process/HTTP/state lifecycle is now checked in the checkout
+and installed runtime, with native providers and feeds supplied by explicit
+fixtures. It does not constitute live adoption or physical acceptance.
 
 The active objective is to revise weak apps, improve functionality and add everyday
 quality-of-life features. The user's first priority is **animations, layout and

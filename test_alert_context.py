@@ -249,6 +249,8 @@ def test_gpu_failure_retains_process_age_and_pacing():
     (quake.build_payload(event()), quake.build_payload(event(), animated=False), 'quake0')])
 def test_real_panel_client_static_latch_uses_same_readings_without_animation(payload, safety, name, panel_gate_dir):
     client, session, _clock = make_client()
+    session.get.return_value = Mock(status_code=200)
+    session.get.return_value.json.return_value = {'version': '1.2.2', 'uptimeSeconds': 3600}
     firmware_compat.observe_device(client.base_url, {'version': '1.2.2'})
     client._static_latched = True
     scene = panel_scene.PresenceScene(client, name, 10, FakeClock(), Mock())
