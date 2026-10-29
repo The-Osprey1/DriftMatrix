@@ -172,3 +172,13 @@ check-only paths. Missing or over-ceiling measurements cannot accept a new set;
 recovery can still restore the previous source with its memory status reported.
 See `RESIDENT_VM_BUDGET.md`. This tooling change does not install a resident
 candidate or establish its real compiled cost, FPS or physical appearance.
+
+## Ocean allocation follow-up
+
+The guarded 3.1 hardware trial measured 25,313 bytes for Ocean and 80,604 bytes
+shared, rejected it and restored the previous source and rotation. The separate
+3.2 candidate consolidates visitor state, packs exact numeric data and releases
+one-time constructor constants. Its float32 source comparisons preserve the
+approved art and lifecycle. The independent upstream runtime profile shows
+lower retained allocation but does not establish ESP32 fit; all live memory,
+rollback, FPS and physical gates remain. See `OCEAN_COMPACT.md`.

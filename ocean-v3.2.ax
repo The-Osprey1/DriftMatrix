@@ -1,0 +1,124 @@
+# @name Ocean
+# @desc Layered blue reef, gold fish and a manta with rolling wings
+# @version 3.2
+# Memory candidate; approved 3.1 pixels and lifecycle are preserved.
+# Keep ocean.ax and ocean-v3.1.ax unchanged for reference and rollback.
+class Ocean
+var visible,scene_ms,lastt,lastf,seed,tide,lx,ly,ldir,fx,fy,tx,ty,ox,oy,scat,w,c,msk,msk2,kx,fl,T,B,sc,sp,sn4,visitors,visitor_rules
+def init()
+self.visible=false self.scene_ms=0 self.lastt=0 self.lastf=now_ms() self.seed=1 self.tide=0.0
+self.lx=8.0 self.ly=3.4 self.ldir=1.0 self.scat=0.0
+self.ox=[0.0,-2.2,-2.0,-4.1,-4.4,-6.0] self.oy=[0.0,0.7,-0.8,0.3,-1.1,-0.2] self.fx=[8.0,6.0,6.0,4.0,4.0,2.0] self.fy=[3.4,3.4,3.4,3.4,3.4,3.4] self.tx=[8.0,6.0,6.0,4.0,4.0,2.0] self.ty=[3.4,3.4,3.4,3.4,3.4,3.4]
+# Each visitor: x, y, direction, active, next visible-time deadline.
+# Order preserves the LCG consumption of shark, manta, turtle, angels, jellies, crab.
+self.visitors=[[-12.0,2.0,1.0,false,240000],[-10.0,3.0,1.0,false,12000],[-8.0,1.0,1.0,false,180000],[-8.0,2.5,1.0,false,120000],[-6.0,5.2,1.0,false,90000],[4.0,7.0,1.0,false,45000]]
+# Eleven bytes per visitor: direction bit, spawn x+32 twice, y base,
+# y seed bit (0 = fixed tenths), exit x+32 twice, delay seconds,
+# jitter bit, jitter seconds, speed tenths. No deadlines are quantized.
+self.visitor_rules=bytes("07144B010B134CF009782D0516480208144A960478160618460A001648B403640B041846020A164878025A0D031A44340018465A013C0E02223C460000002D052804")
+self.w=bytes("174B6512425810384B0C2E3F092535071E2C051623030E19")
+self.c=bytes("8FD5EB4FA8C82A7088103A4A1A6E7A8FFFD8174F4A50B8A075AEC3F7D397C99C6673503924425450B3D8C9EAF410232E2035411B2D39192A35354E592B414E526A700208140A283C8C4226A85E3A7028804818584A26166E381E1C38262C5038")
+self.msk=bytes("C006FC03FF03C600") self.msk2=bytes("C000FC03FF07C606") self.kx=bytes("0107121C") self.fl=bytes("0000010100000001020201000000010102010000000001020201010000010100")
+# Sine samples retain their exact float32 representation; no fixed-point approximation.
+self.T=bytes() self.T.resize(512) var i=0 while i<128 self.T.setfloat(i*4,self.sn(real(i)/128.0)) i+=1 end
+self.sp=0 self.sc=bytes() self.sc.resize(384) i=0 while i<384 self.sc[i]=0 i+=1 end self.sn4=bytes() self.sn4.resize(32) i=0 while i<32 self.sn4[i]=0 i+=1 end
+# Signed 16-bit beam coefficients; palette colours stay exact 24-bit RGB.
+self.B=bytes() self.B.resize(90)
+var y=0 while y<5
+var a=self.w.get(y*3,-3),ar=(a>>16)&0xFF,ag=(a>>8)&0xFF,ab=a&0xFF,o=y*18
+self.B.set(o,ar,2) self.B.set(o+2,ag,2) self.B.set(o+4,ab,2)
+var j=o+6
+for b:[self.c.get(0,-3),self.c.get(6,-3)]
+self.B.set(j,((b>>16)&0xFF)-ar,2) self.B.set(j+2,((b>>8)&0xFF)-ag,2) self.B.set(j+4,(b&0xFF)-ab,2) j+=6
+end
+y+=1 end
+end
+def should_show() var p=shared.get("sunset.phase") if p!=nil&&shared.age("sunset.phase")<300000 return p=="day" end var h=hour() return h<0||(h>=7&&h<17) end
+def duration() return 30000 end
+def sn(x) x=x-int(x) if x<0.0 x+=1.0 end var n=false if x>0.5 x-=0.5 n=true end var f=x*2.0,u=f*(1.0-f) return n?-(16.0*u/(5.0-4.0*u)):(16.0*u/(5.0-4.0*u)) end
+def sq(v) if v<=0.0 return 0.0 end var r=v,i=0 while i<6 r=(r+v/r)*0.5 i+=1 end return r end
+def mix(a,b,n) if n<0 n=0 end if n>100 n=100 end var ar=(a>>16)&0xFF,ag=(a>>8)&0xFF,ab=a&0xFF,br=(b>>16)&0xFF,bg=(b>>8)&0xFF,bb=b&0xFF return (int(ar+(br-ar)*n/100)<<16)|(int(ag+(bg-ag)*n/100)<<8)|int(ab+(bb-ab)*n/100) end
+def fade_pixel(x,y,col) if x<0||x>=32||y<0||y>=8 return end if x>=3&&x<=28 pixel(x,y,col) return end var f=(x<3)?real(x)/3.0:real(31-x)/3.0 if f>0.0 pixel(x,y,self.mix(self.w.get((y)*3,-3),col,int(f*100.0))) end end
+def on_show()
+self.visible=true
+self.lastf=now_ms()
+self.lastt=self.scene_ms
+end
+
+def on_hide()
+self.visible=false
+end
+
+def loop()
+if !self.visible return end
+var t=self.scene_ms,dt=t-self.lastt self.lastt=t if dt<1 dt=1 end if dt>3000 dt=3000 end var k=real(dt)/1000.0 self.tide=self.sn(real(t)/45000.0)*0.8
+var V=self.visitors,P=self.visitor_rules,i=0
+while i<6
+var a=V[i],o=i*11
+if !a[3]
+if t>=a[4]
+a[3]=true self.seed=(self.seed*1103515245+12345)&0x3FFFFFFF
+a[2]=((self.seed>>P[o])&1)==1?1.0:-1.0
+a[0]=real(P[o+(a[2]>0.0?1:2)])-32.0
+a[1]=P[o+4]==0?real(P[o+3])/10.0:real(P[o+3]+((self.seed>>P[o+4])%3))
+end
+elif (i==5&&t>a[4]+12000)||(i!=5&&(a[0]<real(P[o+5])-32.0||a[0]>real(P[o+6])-32.0))
+a[3]=false self.seed=(self.seed*1103515245+12345)&0x3FFFFFFF
+a[4]=t+P[o+7]*1000+((self.seed>>P[o+8])%(P[o+9]*1000))
+end
+i+=1
+end
+var S=V[0]
+self.ly=3.4+self.sn(real(t)/12000.0)*1.0+self.tide*0.3 if self.lx>39.0 self.ldir=-1.0 end if self.lx<-7.0 self.ldir=1.0 end
+if S[3] var dx=self.lx-S[0] if dx<0.0 dx=-dx end var dy=(self.ly-(S[1]+1.5))*3.0 if dy<0.0 dy=-dy end var dist=self.sq(dx*dx+dy*dy) if dist<12.0 var tg=(12.0-dist)/12.0*100.0 if tg>self.scat self.scat=tg end end end
+self.scat=self.scat-self.scat*k/2.2 if self.scat<0.5 self.scat=0.0 end
+var spread=1.0+self.scat/22.0 i=0
+while i<6
+var ax=self.ox[i]*spread,ay=self.oy[i]*spread
+if self.scat>4.0 ax+=self.sn(real(t)/1800.0+real(i)*0.27)*(self.scat/55.0) ay+=self.sn(real(t)/1500.0+real(i)*0.33)*(self.scat/60.0) if S[3] ay+=(self.fy[i]>=S[1]+1.5?1.0:-1.0)*(self.scat/30.0) end end
+self.tx[i]=self.lx+(self.ldir>0.0?ax:-ax)+self.tide self.ty[i]=self.ly+ay i+=1
+end
+end
+def draw()
+if !self.visible return end
+var wall=now_ms(),fd=wall-self.lastf self.lastf=wall if fd<1 fd=1 end if fd>200 fd=200 end
+self.scene_ms+=fd
+var T=self.T,C=self.c,FL=self.fl,t=self.scene_ms,tf=real(t),fk=real(fd)/1000.0
+var guests=self.visitors,P=self.visitor_rules,i=0
+while i<6 var a=guests[i] if a[3] a[0]+=a[2]*(real(P[i*11+10])/10.0)*fk end i+=1 end
+var S=guests[0],M=guests[1],TR=guests[2],AG=guests[3],ED=guests[4],HC=guests[5]
+self.lx+=self.ldir*1.5*fk var fg=(1.8+self.scat/70.0)*fk if fg>0.5 fg=0.5 end var q=0 while q<6 self.fx[q]+=(self.tx[q]-self.fx[q])*fg self.fy[q]+=(self.ty[q]-self.fy[q])*fg q+=1 end
+var y=0 while y<8 line(0,y,31,y,self.w.get((y)*3,-3)) y+=1 end
+var U=tf*128.0/8500.0,V=tf*128.0/12000.0,B=self.B,SC=self.sc,SN=self.sn4,x=self.sp self.sp=(x+1)%4 while x<32 var shaft=(T.getfloat((int(real(x)*20.48+U)&127)*4)+T.getfloat((int(real(x)*35.84-V)&127)*4))*0.5,o5=x*4,y_beam=0 if shaft>0.26 var base=(shaft-0.26)*100.0 while y_beam<4 var it=int(base*((100-y_beam*22)/100.0)) if it<=0 break end var o=y_beam*9,j=o+((y_beam<=1&&it>30)?3:6) var co=(o5+y_beam)*3 SC[co]=B.geti((o)*2,2)+B.geti((j)*2,2)*it/100 SC[co+1]=B.geti((o+1)*2,2)+B.geti((j+1)*2,2)*it/100 SC[co+2]=B.geti((o+2)*2,2)+B.geti((j+2)*2,2)*it/100 y_beam+=1 end end SN[x]=y_beam x+=4 end x=0 while x<32 var n=SN[x] if n>0 var i4=x*4,yb=0 while yb<n var ci=(i4+yb)*3 pixel(x,yb,(SC[ci]<<16)|(SC[ci+1]<<8)|SC[ci+2]) yb+=1 end end x+=1 end
+var bg=int(tf/5000.0)%32 line(0,7,31,7,C.get((15)*3,-3)) x=0 while x<32 var ix=(x+bg)%32,hh=FL[ix] if (ix&3)!=0 pixel(x,7,C.get((15+(ix&3))*3,-3)) end if hh>0 pixel(x,6,C.get((19+(ix&1))*3,-3)) end if hh>1 pixel(x,5,C.get((21)*3,-3)) end x+=1 end
+var s=0 while s<7 var snow_x=int((s*9+2+bg+self.tide*2.0)%32.0) if snow_x<0 snow_x+=32 end pixel(snow_x,int((tf/7500.0+real(s)*1.13)%8.0),C.get((12)*3,-3)) s+=1 end
+var k=0 while k<4 var root_x=real((self.kx[k]+bg)%32)+self.tide*0.3,curr_x=root_x,angle=T.getfloat((int(tf*128.0/2800.0+root_x*51.2)&127)*4)*0.5,ky=7 while ky>=4 var px_i=int(curr_x+0.5) if px_i>=0&&px_i<32 pixel(px_i,ky,(ky==4)?C.get((7)*3,-3):C.get((6)*3,-3)) if ky==5||ky==6 var lx=px_i+((ky+k)%2==0?1:-1) if lx>=0&&lx<32 pixel(lx,ky,C.get((7)*3,-3)) end end end curr_x+=angle ky-=1 end k+=1 end
+if HC[3] var hcx=int(HC[0]) self.fade_pixel(hcx,7,C.get((28)*3,-3)) self.fade_pixel(HC[2]>0.0?hcx+1:hcx-1,7,C.get((29)*3,-3)) end
+if ED[3] var edx=ED[0],d=0 while d<3 var px_d=int(edx+real(d*3*(ED[2]>0.0?-1:1))+0.5),py_d=int(ED[1])+((d%2==0)?0:1) self.fade_pixel(px_d,py_d,C.get((26)*3,-3)) self.fade_pixel(ED[2]>0.0?px_d-1:px_d+1,py_d,C.get((27)*3,-3)) d+=1 end end
+if AG[3] var agx=int(AG[0]),agy=AG[1]+T.getfloat((int(tf*128.0/1800.0)&127)*4)*0.4,a=0 while a<3 var ax_off=a*4*(AG[2]>0.0?-1:1),ay_off=(a==1)?-1.0:((a==2)?1.0:0.0),cur_ax=agx+ax_off,cur_ay=int(agy+ay_off) if cur_ay>=1&&cur_ay<7 var c_i=-1 while c_i<=1 var px_a=cur_ax+c_i self.fade_pixel(px_a,cur_ay,C.get((24)*3,-3)) if c_i==0 self.fade_pixel(px_a,cur_ay-1,C.get((25)*3,-3)) end c_i+=1 end end a+=1 end end
+if TR[3] var trx=int(TR[0]),try_i=int(TR[1]),flap=T.getfloat((int(tf*128.0/1200.0)&127)*4)>0.0?1:0,c_i=0 while c_i<4 var px_t=TR[2]>0.0?trx+c_i:trx+(3-c_i) self.fade_pixel(px_t,try_i+1,C.get((30)*3,-3)) if c_i==1||c_i==2 self.fade_pixel(px_t,try_i,C.get((31)*3,-3)) end c_i+=1 end self.fade_pixel(TR[2]>0.0?trx+2:trx+1,try_i+1+flap,C.get((31)*3,-3)) self.fade_pixel(TR[2]>0.0?trx+3:trx,try_i,C.get((30)*3,-3)) end
+if M[3] self.draw_manta(t) end
+var f=0 while f<6 var cx=int(self.fx[f]+0.5),cy=int(self.fy[f]+0.5) if cy<1 cy=1 end if cy>6 cy=6 end self.fade_pixel(cx,cy,f==0?C.get((9)*3,-3):C.get((10)*3,-3)) self.fade_pixel(self.ldir>0.0?cx-1:cx+1,cy,C.get((11)*3,-3)) f+=1 end
+var b=0 while b<4 var per=4800.0+real(b)*1200.0,ph=real(int(t+b*1100)%int(per))/per,by=7.0-ph*8.2,bx=real((b*8+5)%32)+T.getfloat((int(tf*128.0/2400.0+real(b)*217.6)&127)*4)*1.2+self.tide*0.5,bxi=int(bx) if bxi>=0&&bxi<32&&by>-0.5&&by<8.0 pixel(bxi,int(by),C.get((8)*3,-3)) end b+=1 end
+if S[3] var bx=int(S[0]),by=int(S[1]+T.getfloat((int(tf*128.0/2200.0+S[0]*14.222)&127)*4)*0.5),swish=(t%1400)<700,r=0 while r<4 var bits=swish?self.msk.get((r)*2,2):self.msk2.get((r)*2,2),c_idx=0 while c_idx<11 if ((bits>>(10-c_idx))&1)==1 var qx=S[2]>0.0?bx+c_idx:bx+(10-c_idx) self.fade_pixel(qx,by+r,r==0?C.get((23)*3,-3):C.get((22)*3,-3)) end c_idx+=1 end r+=1 end end
+end
+
+# Broad shoulders, a diamond body, raised/lowered wingtips and a thin tail.
+# Six eased poses return to the same wing position across the loop seam.
+def draw_manta(t)
+var M=self.visitors[1]
+var C=self.c,mxi=int(M[0]),myi=int(M[1]+0.5)
+var phase=int(t/400)%6,wing=(phase==0||phase==5)?-1:((phase==2||phase==3)?1:0)
+var c_off=-2
+while c_off<=2 self.fade_pixel(mxi+c_off,myi,C.get((13)*3,-3)) c_off+=1 end
+self.fade_pixel(mxi-3,myi+wing,C.get((14)*3,-3)) self.fade_pixel(mxi+3,myi+wing,C.get((14)*3,-3))
+self.fade_pixel(mxi,myi-1,C.get((13)*3,-3)) self.fade_pixel(mxi,myi+1,C.get((13)*3,-3))
+self.fade_pixel(mxi,myi,C.get((14)*3,-3))
+self.fade_pixel(M[2]>0.0?mxi-4:mxi+4,myi+1,C.get((13)*3,-3))
+end
+end
+# This file creates one page per load. Release the constructor's constants after
+# its buffers are initialized; reload/reboot defines a fresh class and constructor.
+var _ocean_page=Ocean()
+Ocean.init=nil
+return _ocean_page
