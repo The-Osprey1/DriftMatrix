@@ -255,3 +255,11 @@ the clock from the UI. Timestamp expiry, child-bound IPC and restart reset preve
 old success from appearing current. The native isolated Services preview and
 verification scope are in `FEED_ACTIVITY.md`. The running host and shortcut are
 unchanged by this source implementation; guarded adoption remains separate.
+
+## Focus timing follow-up
+
+The break steam and completion GIFs used off-grid delays despite the established
+120 ms timing rule. `FOCUS_TIMING.md` compares the actual old/new wire payloads:
+unchanged art and timer lanes, slightly slower steam, and a longer one-shot cue.
+This remains a separate source candidate pending visual approval and guarded host
+adoption; it is not evidence that a physical clock already displays the change.

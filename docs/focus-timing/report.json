@@ -1,0 +1,8 @@
+{
+  "cases": 16,
+  "max_wire_bytes": 1583,
+  "max_icon_bytes": 477,
+  "all_rgb_frames_preserved": true,
+  "all_loop_policies_preserved": true,
+  "scope": "Offline synthetic wire-payload review. No HTTP or device access."
+}

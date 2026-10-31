@@ -51,9 +51,10 @@ LIFETIME_MS = 20_000
 PAYLOAD_MAX_BYTES = 2_048
 ICON_MAX_BYTES = 850
 
+# 120 ms multiples align GIF centiseconds with the 24 ms render tick.
 FOCUS_FRAME_MS = 240
-BREAK_FRAME_MS = 300
-SPARKLE_FRAME_MS = 180
+BREAK_FRAME_MS = 360
+SPARKLE_FRAME_MS = 240
 FOCUS_SECONDS = 25 * 60
 SHORT_BREAK_SECONDS = 5 * 60
 LONG_BREAK_SECONDS = 15 * 60
@@ -990,8 +991,11 @@ def validate_icon_gif(
                 image.seek(index)
                 if "transparency" in image.info:
                     raise ValueError("Focus Sprint GIF frame must be fully opaque")
+                duration = int(image.info.get("duration", 0))
+                if image.n_frames > 1 and (duration <= 0 or duration % 120):
+                    raise ValueError("animated Focus Sprint frames must use positive 120 ms multiples")
                 if durations_ms is not None and durations_ms[index] > 0:
-                    if int(image.info.get("duration", 0)) != int(durations_ms[index]):
+                    if duration != int(durations_ms[index]):
                         raise ValueError("Focus Sprint icon cadence changed during encoding")
                 rgba = image.convert("RGBA")
                 if any(alpha != 255 for *_, alpha in rgba.getdata()):
