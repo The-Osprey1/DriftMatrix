@@ -299,23 +299,24 @@ def parse_weather(payload: Mapping[str, Any], now: datetime | None = None) -> We
     )
 
 
+# Open-Meteo's documented WMO interpretation codes. Exact membership keeps
+# unassigned values (for example 52 or 98) from becoming a false condition.
+# https://open-meteo.com/en/docs#weather_variable_documentation
+WMO_ICON_KIND = {
+    0: "clear", 1: "part", 2: "part", 3: "overcast",
+    45: "fog", 48: "fog",
+    51: "drizzle", 53: "drizzle", 55: "drizzle",
+    56: "freezing", 57: "freezing",
+    61: "rain", 63: "rain", 65: "rain", 66: "freezing", 67: "freezing",
+    71: "snow", 73: "snow", 75: "snow", 77: "snow",
+    80: "rain", 81: "rain", 82: "rain", 85: "snow", 86: "snow",
+    95: "storm", 96: "storm", 97: "storm", 99: "storm",
+}
+PRECIPITATION_ICONS = frozenset({"rain", "drizzle", "freezing", "snow", "storm"})
+
+
 def weather_category(code: int) -> str:
-    code = int(code)
-    if code == 0:
-        return "clear"
-    if code <= 2:
-        return "part"
-    if code == 3:
-        return "cloud"
-    if 45 <= code <= 48:
-        return "fog"
-    if 51 <= code <= 67 or 80 <= code <= 82:
-        return "rain"
-    if 71 <= code <= 77 or code in (85, 86):
-        return "snow"
-    if 95 <= code <= 99:
-        return "storm"
-    return "cloud"
+    return WMO_ICON_KIND.get(int(code), "unknown")
 
 
 def _temperature_text(value: float) -> str:
@@ -336,7 +337,7 @@ def _rain_candidate(probability: int, amount_mm: float, code: int) -> bool:
     return (
         probability >= RAIN_PROBABILITY_THRESHOLD
         or amount_mm >= RAIN_AMOUNT_THRESHOLD_MM
-        or (category in {"rain", "snow", "storm"} and probability >= 25)
+        or (category in PRECIPITATION_ICONS and probability >= 25)
     )
 
 
@@ -347,7 +348,7 @@ def choose_scene(snapshot: WeatherSnapshot, now: datetime | None = None) -> Weat
     local_now = _coerce_now(now, zone)
     current_kind = weather_category(snapshot.weather_code)
 
-    if current_kind in {"rain", "snow", "storm"}:
+    if current_kind in PRECIPITATION_ICONS:
         return WeatherScene(
             kind="rain",
             text="NOW",
@@ -375,14 +376,14 @@ def choose_scene(snapshot: WeatherSnapshot, now: datetime | None = None) -> Weat
             if (
                 delta_minutes <= 0
                 and amount < RAIN_AMOUNT_THRESHOLD_MM
-                and forecast_kind not in {"rain", "snow", "storm"}
+                and forecast_kind not in PRECIPITATION_ICONS
             ):
                 # A probability attached to the already-started dry interval
                 # is not evidence that rain is falling NOW.
                 continue
             eta = max(0, int(math.ceil(delta_minutes)))
             icon_kind = forecast_kind
-            if icon_kind not in {"rain", "snow", "storm"}:
+            if icon_kind not in PRECIPITATION_ICONS:
                 icon_kind = "rain"
             return WeatherScene(
                 kind="rain",

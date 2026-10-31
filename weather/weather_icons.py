@@ -416,6 +416,28 @@ def _rich_frames(kind: str, is_day: bool) -> tuple[list[list[list[RGB]]], int]:
                     _put(frame, x, y, RICH["snow"] if step % 2 else RICH["drizzle"])
             out.append(frame)
         return out, delay
+    if kind == "freezing":
+        # Ice-shaped drops signify freezing liquid precipitation, distinct
+        # from the snow cross and the retained mixed-rain/snow reference.
+        out = []
+        for step in range(4):
+            frame = _rgb_blank()
+            _cloud(frame, 1)
+            for centre in (2, 6):
+                edge = ((centre, 5), (centre + 1, 6), (centre, 7), (centre - 1, 6))
+                for index, (x, y) in enumerate(edge):
+                    _put(frame, x, y, RICH["snow"] if index == step else RICH["rain"])
+            out.append(frame)
+        return out, 240
+    if kind == "unknown":
+        # Keep the valid temperature; a steady question mark admits that the
+        # condition code is unknown instead of inventing a sky condition.
+        frame = _rgb_blank()
+        for y, row in enumerate(("110", "001", "010", "000", "010"), 1):
+            for x, pixel in enumerate(row, 2):
+                if pixel == "1":
+                    _put(frame, x, y, RICH["cloud_top"])
+        return [frame], 240
     if kind == "storm":
         out = []
         for step in range(8):

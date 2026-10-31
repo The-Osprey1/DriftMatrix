@@ -230,3 +230,15 @@ unchanged. See `AQI_READABILITY.md` for actual-payload comparisons, the original
 breath cadence and low-light/static views. The restored design must be reviewed
 before guarded host adoption, including the requested AQI animation; physical
 appearance remains separate. This follow-up makes no live changes.
+
+
+## Weather condition routing follow-up
+
+A full provider-to-wire audit found that overcast and drizzle artwork was bypassed
+and freezing precipitation was shown as ordinary rain. Exact documented-code
+routing now selects those families and explicitly marks unknown conditions while
+retaining the valid temperature. Drizzle/freezing countdowns share the existing
+precipitation guard, timestamp and ETA rules. Actual-payload review covers every
+documented code in both day/night and static/animated modes, plus future events.
+See `WEATHER_CONDITIONS.md`. Revised symbols, guarded host/motion adoption and
+physical acceptance remain separate; this implementation makes no live changes.
