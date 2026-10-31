@@ -28,8 +28,7 @@ from typing import Any, Callable, Iterable
 from panel_scene import PresenceScene, encode_icon_gif, lane_payload, pattern_frame, run_scene
 from visual_system import (
     AMBER, CORAL, GOLD, ICE, LANE_WIDTH, MINT, PEARL, RGB,
-    VIOLET, Frame, measure_text_3x3, new_frame,
-    render_split_lane, draw_level_rail, MIST,
+    VIOLET, Frame, LABEL_GAP, glance_text_width, new_frame, render_glance_lane,
 )
 
 APP_NAME = "game0"
@@ -211,16 +210,22 @@ def elapsed_label(minutes: int | float | None) -> str:
 
 
 def render_lane(gpu: GpuReading | None, session_minutes: int | None = 0) -> Frame:
-    """Temperature and process age together; only temperature owns the rail."""
+    """GPU temperature in the full 3x5 font: grey GPU, white 71°, rail to throttle.
+
+    Until 2026-10-31 this was two lines of 3x3 type (71C over 42M) that could
+    not be read at a glance; the session age stays in the log, not the lane.
+    """
     temp = getattr(gpu, 'temperature_c', None)
     valid = (not isinstance(temp, bool) and isinstance(temp, (int, float))
-             and math.isfinite(temp) and measure_text_3x3(f'{round(temp)}C') <= LANE_WIDTH)
-    value = f'{round(temp)}C' if valid else 'GPU?'
-    frame = render_split_lane(value, elapsed_label(session_minutes), bottom_color=MIST)
+             and math.isfinite(temp) and -99 < round(temp) < 1000)
+    if not valid:
+        return render_glance_lane('GPU?')
+    value = f'{round(temp)}\N{DEGREE SIGN}'
     lo, hi = TEMP_SCALE_C
-    draw_level_rail(frame, (temp - lo) / (hi - lo) if valid else None,
-                    temperature_level(temp) if valid else 'info')
-    return frame
+    gap = next((g for g in (LABEL_GAP, 2, 1)
+                if glance_text_width(value, 'GPU', g) <= LANE_WIDTH), 1)
+    return render_glance_lane(value, label='GPU', label_gap=gap,
+                              meter=(temp - lo) / (hi - lo), level=temperature_level(temp))
 
 
 def build_payload(gpu: GpuReading | None, session_minutes: int | None, *, animated=True) -> dict[str, Any]:

@@ -429,10 +429,10 @@ def format_remaining_time(seconds: float, *, show_seconds: bool = True) -> str:
     return '99H+' if hours >= 100 else f'{hours}H{minutes:02d}'
 
 
-def glance_text_width(value: str, label: str | None = None) -> int:
+def glance_text_width(value: str, label: str | None = None, label_gap: int = LABEL_GAP) -> int:
     if not label:
         return measure_text(value)
-    return measure_text(label) + LABEL_GAP + measure_text(value)
+    return measure_text(label) + label_gap + measure_text(value)
 
 
 def render_glance_lane(
@@ -441,6 +441,7 @@ def render_glance_lane(
     label: str | None = None,
     meter: float | None = None,
     level: str = "info",
+    label_gap: int = LABEL_GAP,
 ) -> Frame:
     """Render the 23x8 lane for one value, in the calm-glance layout.
 
@@ -450,20 +451,22 @@ def render_glance_lane(
     """
     if level not in LEVEL_COLORS:
         raise ValueError(f"unknown level {level!r}")
+    if type(label_gap) is not int or label_gap < 1:
+        raise ValueError("label_gap must be a positive integer")
     frame = new_frame()
     # Row 7 first: nothing may be painted under the text band.  Since
     # 2026-10-03 this is Now Playing's rail: the fill brightens toward a PEARL
     # leader and the empty scale is a dark tint of the level colour, not grey.
     draw_level_rail(frame, meter, level)
 
-    if label and glance_text_width(value, label) > TEXT_BUDGET:
+    if label and glance_text_width(value, label, label_gap) > TEXT_BUDGET:
         label = None
-    width = glance_text_width(value, label)
+    width = glance_text_width(value, label, label_gap)
     if width > TEXT_BUDGET:
         raise ValueError(f"{value!r} is {width}px; the lane holds {TEXT_BUDGET}px")
     x = LANE_X0 + (LANE_WIDTH - width) // 2
     if label:
-        x += draw_text(frame, label, x, 1, MIST) + LABEL_GAP
+        x += draw_text(frame, label, x, 1, MIST) + label_gap
     draw_text(frame, value, x, 1, PEARL)
     for y in range(HEIGHT):
         frame[y][GUTTER_X] = BLACK

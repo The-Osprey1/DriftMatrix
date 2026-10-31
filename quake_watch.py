@@ -26,7 +26,7 @@ from panel_scene import PresenceScene, encode_icon_gif, https_get, lane_payload,
 from visual_system import (
     LANE_WIDTH, LEVEL_COLORS, PEARL, RGB, Frame,
     gamma_lerp, measure_text, measure_text_3x3, new_frame, put_pixel,
-    render_split_lane, draw_level_rail, MIST, scale_color,
+    render_glance_lane, scale_color,
 )
 
 APP_NAME = "quake0"
@@ -248,11 +248,12 @@ def closeness(q: Quake, radius_km: float = DEFAULT_RADIUS_KM,
 
 def render_lane(q: Quake, radius_km: float = DEFAULT_RADIUS_KM, *,
                 home: tuple[float, float] = (HOME_LAT, HOME_LON)) -> Frame:
-    c = closeness(q, radius_km, home)
-    frame = render_split_lane(magnitude_text(q.magnitude), distance_label(q, home), bottom_color=MIST)
-    # Row 6 belongs to distance typography; only row 7 carries proximity.
-    draw_level_rail(frame, c, magnitude_level(q.magnitude))
-    return frame
+    # One line in the full 3x5 font (2026-10-31): magnitude in white, how
+    # close it was on the rail.  The two-line 3x3 split (M3.4 over 4 MI)
+    # could not be read at a glance.
+    return render_glance_lane(magnitude_text(q.magnitude),
+                              meter=closeness(q, radius_km, home),
+                              level=magnitude_level(q.magnitude))
 
 
 def build_payload(q: Quake, radius_km: float = DEFAULT_RADIUS_KM, *,

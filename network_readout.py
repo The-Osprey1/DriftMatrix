@@ -29,8 +29,12 @@ def reading(value, full_scale_mib_s=DEFAULT_FULL_SCALE_MIB_S):
     if not math.isfinite(rate):
         return NetworkReading('--', 'MiB/s', None, 0)
     rate = max(0.0, rate)
-    if rate < 1024:
+    # One decimal below 100 and whole numbers above, so the value and its
+    # unit fit one line of the 3x5 font together ("125 MB", not 3x3 type).
+    if rate < 99.95:
         text, unit, factor = f'{rate:.1f}', 'MiB/s', 1
+    elif rate < 999.5:
+        text, unit, factor = f'{rate:.0f}', 'MiB/s', 1
     else:
         text, unit, factor = f'{rate / 1024:.2f}', 'GiB/s', 1024
     if len(text) > 6:
@@ -43,10 +47,25 @@ def reading(value, full_scale_mib_s=DEFAULT_FULL_SCALE_MIB_S):
     return NetworkReading(text, unit, visible_rate, fill)
 
 
+SHORT_UNITS = {'MiB/s': 'MB', 'GiB/s': 'GB'}
+
+
 def render_lane(model: NetworkReading):
-    """Value and explicit binary unit are visible together, with one rich rail."""
-    frame = visual.render_split_lane(model.text, model.unit, bottom_color=visual.MIST)
-    visual.draw_level_rail(frame, model.rail_fill / 23 if model.rail_fill else None, 'info')
+    """Value in white and its unit in grey on one 3x5 line, with one rail.
+
+    Until 2026-10-31 this was two lines of 3x3 type (value over MiB/s).
+    """
+    frame = visual.render_glance_lane(
+        model.text, meter=model.rail_fill / 23 if model.rail_fill else None, level='info')
+    unit = SHORT_UNITS.get(model.unit, model.unit)
+    width = visual.measure_text(model.text) + 1 + visual.measure_text(unit)
+    if width <= visual.LANE_WIDTH:
+        for y in range(1, 6):
+            for x in range(visual.LANE_X0, visual.LANE_X0 + visual.LANE_WIDTH):
+                frame[y][x] = visual.BLACK
+        x = visual.LANE_X0 + (visual.LANE_WIDTH - width) // 2
+        x += visual.draw_text(frame, model.text, x, 1, visual.PEARL) + 1
+        visual.draw_text(frame, unit, x, 1, visual.MIST)
     return frame
 
 

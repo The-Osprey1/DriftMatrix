@@ -78,15 +78,23 @@
     "lane_sha256": "7edb89b8f3d3dd38eaf09241424fadc5e16da708cd716ec5ba0da97f94d98ce0"
   },
   "cpu": {
-    "lane_sha256": "fcf65ac49b346a1c1b1e0aff4195bb1cfb80c96618b69266e6f169be61214b67"
+    "lane_sha256": "2151045dd6dd8c56ab6b5fe56687c886de9c0653737db64d986443043cc7bb4b",
+    "previous_lane_sha256": "fcf65ac49b346a1c1b1e0aff4195bb1cfb80c96618b69266e6f169be61214b67",
+    "change": "2026-10-31 legibility pass: the lane names its metric (grey CPU/RAM/GPU label, value without %), because a bare 82% did not say what was at 82. Rail and level colours unchanged."
   },
   "ram": {
-    "lane_sha256": "d9c6eeb9e5d1216a35c1bcab0f11c7ac8c8f226f662008596bb159a05c496944"
+    "lane_sha256": "ca16b0bab70b76cb863476086939023fa3ff20f28e072b6fd26227782d8605dc",
+    "previous_lane_sha256": "d9c6eeb9e5d1216a35c1bcab0f11c7ac8c8f226f662008596bb159a05c496944",
+    "change": "2026-10-31 legibility pass: the lane names its metric (grey CPU/RAM/GPU label, value without %), because a bare 82% did not say what was at 82. Rail and level colours unchanged."
   },
   "gpu": {
-    "lane_sha256": "525d5aa415866832ab2e624342cd2951f5a83c0fd0b95524c886c224b313fd3c"
+    "lane_sha256": "ed1d9bf9f2b419e8a2187c8a643b60ac2765fda8c2c0dd11992f6de4b6c70d38",
+    "previous_lane_sha256": "525d5aa415866832ab2e624342cd2951f5a83c0fd0b95524c886c224b313fd3c",
+    "change": "2026-10-31 legibility pass: the lane names its metric (grey CPU/RAM/GPU label, value without %), because a bare 82% did not say what was at 82. Rail and level colours unchanged."
   },
   "combined": {
-    "lane_sha256": "d9c6eeb9e5d1216a35c1bcab0f11c7ac8c8f226f662008596bb159a05c496944"
+    "lane_sha256": "ca16b0bab70b76cb863476086939023fa3ff20f28e072b6fd26227782d8605dc",
+    "previous_lane_sha256": "d9c6eeb9e5d1216a35c1bcab0f11c7ac8c8f226f662008596bb159a05c496944",
+    "change": "2026-10-31 legibility pass: the lane names its metric (grey CPU/RAM/GPU label, value without %), because a bare 82% did not say what was at 82. Rail and level colours unchanged."
   }
 }

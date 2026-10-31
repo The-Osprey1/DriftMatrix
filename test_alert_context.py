@@ -29,18 +29,19 @@ def event(**kwargs):
     return quake.Quake(**(values | kwargs))
 
 
-def assert_text(frame, top, bottom):
-    expected = visual.render_split_lane(top, bottom, bottom_color=visual.MIST)
+def assert_glance(frame, value, label=None, label_gap=visual.LABEL_GAP):
+    """One line of the full 3x5 font on rows 1-5 (since 2026-10-31)."""
+    expected = visual.render_glance_lane(value, label=label, label_gap=label_gap)
     assert [row[9:] for row in frame[:7]] == [row[9:] for row in expected[:7]]
     assert all(row[8] == visual.BLACK for row in frame)
-    assert frame[3][9:] == [visual.BLACK] * 23
 
 
 def test_two_held_readings_have_explicit_units_and_unobstructed_glyphs():
-    assert_text(game.render_lane(game.GpuReading(78, 80), 35), '78C', '35M')
-    assert_text(game.render_lane(game.GpuReading(65, 80), 125), '65C', '2H05')
-    assert_text(game.render_lane(None, None), 'GPU?', 'AGE?')
-    assert_text(quake.render_lane(event(), home=(0, 0)), 'M3.2', '14 MI')
+    # GPU 78° is 24px at the 3px label gap, so the lane closes it to 2px.
+    assert_glance(game.render_lane(game.GpuReading(78, 80), 35), '78\N{DEGREE SIGN}', 'GPU', 2)
+    assert_glance(game.render_lane(game.GpuReading(65, 80), 125), '65\N{DEGREE SIGN}', 'GPU', 2)
+    assert_glance(game.render_lane(None, None), 'GPU?')
+    assert_glance(quake.render_lane(event(), home=(0, 0)), 'M3.2')
     assert game.render_lane(game.GpuReading(78, 80), 1)[7] == game.render_lane(game.GpuReading(78, 80), 999)[7]
 
 
@@ -63,7 +64,7 @@ def test_custom_origin_controls_distance_and_proximity_together():
     assert quake.distance_label(antipode, (0, 0)) == '12KMI'
     assert quake.haversine_km(0, 0, 0, 180) == pytest.approx(20015.087, abs=.001)
     assert quake.magnitude_text(10.2) == 'M10.2'
-    assert_text(quake.render_lane(event(magnitude=10.2), home=(0, 0)), 'M10.2', '14 MI')
+    assert_glance(quake.render_lane(event(magnitude=10.2), home=(0, 0)), 'M10.2')
 
 
 @pytest.mark.parametrize('home', [(91, 0), (0, -181), (True, 0), (0, None),

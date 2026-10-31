@@ -18,19 +18,22 @@ import visual_system as visual
 
 @pytest.mark.parametrize('rate,text,unit', [
     (0, '0.0', 'MiB/s'), (8.4, '8.4', 'MiB/s'), (25, '25.0', 'MiB/s'),
-    (150, '150.0', 'MiB/s'), (250, '250.0', 'MiB/s'), (1023.9, '1023.9', 'MiB/s'),
-    (1024, '1.00', 'GiB/s'), (2048, '2.00', 'GiB/s'), (10000, '9.77', 'GiB/s'),
+    (99.9, '99.9', 'MiB/s'), (99.96, '100', 'MiB/s'),
+    (150, '150', 'MiB/s'), (250, '250', 'MiB/s'), (999.4, '999', 'MiB/s'),
+    (1023.9, '1.00', 'GiB/s'), (1024, '1.00', 'GiB/s'), (2048, '2.00', 'GiB/s'), (10000, '9.77', 'GiB/s'),
     (-1, '0.0', 'MiB/s'), (None, '--', 'MiB/s'), (float('nan'), '--', 'MiB/s'),
     (float('inf'), '--', 'MiB/s'), (True, '--', 'MiB/s'), (1e300, '999+', 'GiB/s'),
 ])
 def test_binary_units_are_explicit_and_supported_labels_fit(rate, text, unit):
     reading = net.reading(rate)
     assert (reading.text, reading.unit) == (text, unit)
-    assert visual.measure_text_3x3(text) <= 23
-    assert visual.measure_text_3x3(unit) <= 23
+    # Value and short unit share one line of the 3x5 font (since 2026-10-31).
+    short = net.SHORT_UNITS[unit]
+    assert visual.measure_text(text) + 1 + visual.measure_text(short) <= 23
     frame = net.render_lane(reading)
     assert all(frame[y][8] == visual.BLACK for y in range(8))
-    assert all(frame[3][x] == visual.BLACK for x in range(9, 32))
+    assert all(frame[6][x] == visual.BLACK for x in range(9, 32))
+    assert visual.MIST in frame[3][9:]  # the unit is drawn, in grey
 
 
 def test_receive_sampler_units_remain_binary_without_changing_alert_thresholds():
@@ -43,7 +46,7 @@ def test_receive_sampler_units_remain_binary_without_changing_alert_thresholds()
 def test_150_to_250_is_visible_and_refreshes_after_confirmation_and_pacing():
     before, after = pc.page_view([('NET', 150)]), pc.page_view([('NET', 250)])
     assert before.percent is None and after.percent is None
-    assert before.network.text == '150.0' and after.network.text == '250.0'
+    assert before.network.text == '150' and after.network.text == '250'
     assert pc.metric_payload('NET', 150) != pc.metric_payload('NET', 250)
     assert pc.shows_change(after, before)
     assert not pc.refresh_due(after, before, pc.PUSH_INTERVAL - .1, change_streak=10)
@@ -76,7 +79,8 @@ def test_visible_quantization_and_scale_are_part_of_page_identity():
 def test_real_bitmap_contains_rate_and_unit_without_a_percent_sign():
     payload = pc.metric_payload('NET', 150)
     decoded = decode(payload)['frames'][0]
-    expected = visual.render_split_lane('150.0', 'MiB/s', bottom_color=visual.MIST)
+    expected = net.render_lane(net.reading(150))
+    assert visual.MIST in expected[3][9:] and visual.PEARL in expected[3][9:]
     for y in range(7):
         assert decoded[y * 32 + 9:(y + 1) * 32] == ['%02x%02x%02x' % p for p in expected[y][9:]]
     for animated in (True, False):

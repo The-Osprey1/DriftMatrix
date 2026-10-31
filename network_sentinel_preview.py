@@ -141,6 +141,9 @@ WIFI_ARCS: tuple[tuple[tuple[int, int], ...], ...] = (
 )
 WIFI_FOOTPRINT = frozenset(point for arc in WIFI_ARCS for point in arc)
 ARC_TINT = 0.22
+# ROUTER (nothing past this PC) is the universal "Wi-Fi off" symbol: the fan
+# struck through, top-left to bottom-right.
+ROUTER_SLASH: tuple[tuple[int, int], ...] = tuple((x, x + 1) for x in range(7))
 
 
 LABEL_COLORS: dict[NetworkState, RGB] = {
@@ -191,7 +194,9 @@ def state_label(
     if state is NetworkState.SLOW:
         return f"{_bounded_int(latency_ms, 0, 999, 180)}MS"
     if state is NetworkState.LOSS:
-        return f"L {_bounded_int(loss_percent, 0, 99, 30)}%"
+        # "L 30%" was a one-letter abbreviation; the lane draws LOSS as a
+        # grey label beside the number (see lane_frame).
+        return f"LOSS {_bounded_int(loss_percent, 0, 99, 30)}"
     return {
         NetworkState.ROUTER: "ROUTER",
         NetworkState.WAN: "WAN",
@@ -250,7 +255,11 @@ def lane_frame(
         meter, level = _bounded_int(latency_ms, 0, 999, 180) / 500, "poor"
     elif state is NetworkState.LOSS:
         meter, level = _bounded_int(loss_percent, 0, 99, 30) / 100, "bad"
-    lane = render_glance_lane(label, meter=meter, level=level)
+    if state is NetworkState.LOSS:
+        word, value = label.split(" ", 1)
+        lane = render_glance_lane(value, label=word, label_gap=1, meter=meter, level=level)
+    else:
+        lane = render_glance_lane(label, meter=meter, level=level)
     return [row[GLANCE_LANE_X0:GLANCE_LANE_X0 + LANE_WIDTH] for row in lane]
 
 
@@ -271,6 +280,8 @@ def _paint_arcs(state: NetworkState, levels: tuple[float, float, float, float]) 
     for arc, level in zip(WIFI_ARCS, levels):
         shade = gamma_lerp(tint, colour, level)  # type: ignore[arg-type]
         _paint(frame, arc, shade)
+    if state is NetworkState.ROUTER:
+        _paint(frame, ROUTER_SLASH, PEARL)
     return frame
 
 
@@ -326,7 +337,9 @@ def arc_levels(
     # Every beat differs from the last, or the GIF encoder merges frames.
     breath = (1.0, 0.8, 0.6, 0.4, 0.6, 0.8)[phase]
     if state is NetworkState.ROUTER:
-        return (breath, 0.0, 0.0, 0.0)
+        # The whole fan, struck through (see ROUTER_SLASH): a lone dot over
+        # 22% arcs read as a dark smudge and vanished at brightness 1.
+        return (1.0, 1.0, 1.0, breath)
     if state is NetworkState.WAN:
         # A search beam sweeping out past the local link, never reaching.
         sweep = (0.0, 0.15, 0.3, 0.45, 0.3, 0.15)

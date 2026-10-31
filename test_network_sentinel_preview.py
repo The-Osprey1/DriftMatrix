@@ -9,6 +9,7 @@ import unittest
 from PIL import Image
 
 import network_sentinel_preview as art
+from visual_system import glance_text_width
 
 
 class ForeignState(Enum):
@@ -71,7 +72,7 @@ class StateAndTypographyTests(unittest.TestCase):
             "dns": "DNS",
             "login": "LOGIN",
             "slow": "180MS",
-            "loss": "L 30%",
+            "loss": "LOSS 30",
             "recovery": "BACK",
         }
         for state, label in expected.items():
@@ -81,10 +82,15 @@ class StateAndTypographyTests(unittest.TestCase):
     def test_dynamic_values_are_rounded_clamped_and_still_fit(self) -> None:
         self.assertEqual(art.state_label("slow", latency_ms=179.6), "180MS")
         self.assertEqual(art.state_label("slow", latency_ms=5_000), "999MS")
-        self.assertEqual(art.state_label("loss", loss_percent=29.6), "L 30%")
-        self.assertEqual(art.state_label("loss", loss_percent=-5), "L 0%")
+        self.assertEqual(art.state_label("loss", loss_percent=29.6), "LOSS 30")
+        self.assertEqual(art.state_label("loss", loss_percent=-5), "LOSS 0")
         for state in art.NetworkState:
             label = art.state_label(state)
+            if state is art.NetworkState.LOSS:
+                # Drawn as a grey LOSS label, a 1px gap, then the number.
+                word, value = label.split(" ")
+                self.assertLessEqual(glance_text_width(value, word, 1), art.LANE_WIDTH)
+                continue
             self.assertLessEqual(art.text_width(label), art.LANE_WIDTH)
 
     def test_every_label_is_centered_in_a_true_black_lane(self) -> None:
@@ -138,7 +144,10 @@ class GeometryAndMotionTests(unittest.TestCase):
         for state in art.NetworkState:
             for frame in art.icon_frames(state):
                 lit = {(x, y) for y in range(8) for x in range(8) if frame[y][x] != art.BLACK}
-                self.assertEqual(lit, set(art.WIFI_FOOTPRINT), state)
+                footprint = set(art.WIFI_FOOTPRINT)
+                if state is art.NetworkState.ROUTER:
+                    footprint |= set(art.ROUTER_SLASH)
+                self.assertEqual(lit, footprint, state)
 
     def test_arcs_are_separate_so_they_read_as_wifi(self) -> None:
         # No pixel of one arc touches another arc side-on, so they never merge.
@@ -149,8 +158,9 @@ class GeometryAndMotionTests(unittest.TestCase):
 
     def test_each_fault_shows_how_far_the_signal_gets(self) -> None:
         reach = {state: {self.bright_arcs(f) for f in art.icon_frames(state)} for state in art.NetworkState}
-        self.assertLessEqual(max(reach[art.NetworkState.ROUTER]), 1)   # nothing past the PC
-        self.assertIn(0, reach[art.NetworkState.ROUTER])               # the dot blinks
+        # Nothing past the PC: the whole fan, struck through ("Wi-Fi off").
+        for frame in art.icon_frames(art.NetworkState.ROUTER):
+            self.assertTrue(all(frame[y][x] == art.PEARL for x, y in art.ROUTER_SLASH))
         self.assertEqual(reach[art.NetworkState.WAN], {2})             # local link only
         for state in (art.NetworkState.DNS, art.NetworkState.LOGIN):
             self.assertIn(3, reach[state])

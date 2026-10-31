@@ -51,8 +51,8 @@ import threading
 from service_runtime import DriftMatrixConfig, run_owned, worker_adapter, wait, in_quiet_hours
 from focus_control import default_data_dir
 from visual_system import (
-    CORAL, GOLD, ICE, MINT, PEARL, RGB, VIOLET, Frame, draw_comet, gamma_lerp, render_glance_lane,
-    scale_color,
+    CORAL, GOLD, ICE, LABEL_GAP, MINT, PEARL, RGB, VIOLET, Frame, draw_comet, gamma_lerp,
+    glance_text_width, render_glance_lane, scale_color,
 )
 from pc_stats_preview import (
     BLACK,
@@ -446,9 +446,24 @@ def glance_level(percent: float) -> str:
     return "bad"
 
 
-def glance_lane(percent: float) -> list:
+def glance_lane(percent: float, label: str | None = None) -> list:
+    """The value, and with ``label`` which metric it is: "CPU 82".
+
+    "CPU 82%" is 25px against a 23px lane, so a labelled page drops the "%"
+    (the rail is the scale); three digits close the label gap to one pixel.
+    The page used to show a bare "82%" and nothing said what was at 82.
+    """
     percent = int(round(normalize_percent(percent)))
-    return render_glance_lane(f"{percent}%", meter=percent / 100, level=glance_level(percent))
+    meter, level = percent / 100, glance_level(percent)
+    if label:
+        value = str(percent)
+        for gap in (LABEL_GAP, 1):
+            if glance_text_width(value, label, gap) <= LANE_WIDTH:
+                return render_glance_lane(value, label=label, label_gap=gap,
+                                          meter=meter, level=level)
+        # "RAM 100" is 25px: name the metric and let the full rail say 100.
+        return render_glance_lane(label, meter=meter, level=level)
+    return render_glance_lane(f"{percent}%", meter=meter, level=level)
 
 
 def _encode_loop(frames: list[Image.Image], **save: object) -> bytes:
@@ -573,7 +588,7 @@ def _lane_bytes(
     *, network_full_scale_mib_s: float = network_readout.DEFAULT_FULL_SCALE_MIB_S,
 ) -> bytes:
     frame = (network_readout.render_lane(network_readout.reading(value, network_full_scale_mib_s))
-             if label == 'NET' else glance_lane(value))
+             if label == 'NET' else glance_lane(value, label))
     assert all(frame[y][GUTTER_X] == BLACK for y in range(HEIGHT))
     return bytes(
         channel
@@ -581,6 +596,11 @@ def _lane_bytes(
         for color in row[LANE_X0 : LANE_X0 + LANE_WIDTH]
         for channel in color
     )
+
+
+def combined_lane_label(cpu: float, ram: float) -> str:
+    """The metric the combined lane names: the worse one, RAM on a visible tie."""
+    return "RAM" if round(ram) >= round(cpu) else "CPU"
 
 
 def _combined_lane_bytes(
@@ -591,7 +611,7 @@ def _combined_lane_bytes(
 ) -> bytes:
     # Both elevated: the combined dial icon shows both needles; the lane
     # reports the worse of the two, since that is the one to act on.
-    frame = glance_lane(max(cpu, ram))
+    frame = glance_lane(max(cpu, ram), combined_lane_label(cpu, ram))
     assert all(frame[y][GUTTER_X] == BLACK for y in range(HEIGHT))
     return bytes(
         channel
@@ -736,6 +756,8 @@ class PageView:
     lane_level: str
     percent: int | None
     network: network_readout.NetworkReading | None = None
+    # Which metric the lane names ("CPU 82"); on the combined page, the worse one.
+    lane_label: str | None = None
 
 
 def page_view(metrics: list[tuple[str, float]], *, settings: 'PCSettings | None' = None) -> PageView:
@@ -753,9 +775,11 @@ def page_view(metrics: list[tuple[str, float]], *, settings: 'PCSettings | None'
         ram = normalize_percent(values["RAM"])
         icon_levels = (severity_level(cpu), severity_level(ram))
         lane_value = max(cpu, ram)
+        lane_label = combined_lane_label(cpu, ram)
     else:
         lane_value = normalize_percent(values[face])
         icon_levels = (severity_level(lane_value),)
+        lane_label = face
     percent = int(round(normalize_percent(lane_value)))
     return PageView(
         labels=tuple(label for label, _ in metrics),
@@ -763,6 +787,7 @@ def page_view(metrics: list[tuple[str, float]], *, settings: 'PCSettings | None'
         icon_levels=icon_levels,
         lane_level=glance_level(percent),
         percent=percent,
+        lane_label=lane_label,
     )
 
 
