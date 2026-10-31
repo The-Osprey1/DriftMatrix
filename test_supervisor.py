@@ -435,12 +435,15 @@ def test_owned_child_activity_round_trips_status_and_resets_before_restart(make_
     engine.shutdown()
 
 
-def test_other_workers_and_weather_cannot_claim_good_air_hiding(make_config):
+@pytest.mark.parametrize('report', [
+    {'state':'hidden_good_air','next_check_seconds':900,'aqi':46},
+    {'state':'media_idle','next_check_seconds':1}])
+def test_workers_cannot_claim_activity_from_another_service(make_config,report):
     children={name:fake_child() for name in ('weather','pc_stats')}
     engine=app.Supervisor(make_config(enabled=tuple(children)),spawn=lambda config,name:children[name])
     engine.step();engine.step()
     for child in children.values():
-        child.connection.messages.append({'activity':{'state':'hidden_good_air','next_check_seconds':900,'aqi':46}})
+        child.connection.messages.append({'activity':report})
     engine.step()
     assert all(engine.services[name].activity is None for name in children)
     engine.shutdown()
@@ -455,3 +458,48 @@ def test_missing_or_malformed_activity_keeps_legacy_status_readable(make_config,
         raw=engine.snapshot();raw['services']['aqi']['activity']=value
         path.write_text(json.dumps(raw))
         assert app.status(config)['services']['aqi']['activity'] is None
+
+
+def test_media_activity_is_owned_and_cannot_claim_feed_delivery(make_config):
+    child=fake_child();engine=app.Supervisor(make_config(enabled=('media',)),spawn=lambda *args:child)
+    engine.step();engine.step();service=engine.services['media']
+    child.connection.messages.append({'activity':{'state':'media_idle','next_check_seconds':1}})
+    engine.step();before=service.activity.copy();assert before['state']=='media_idle'
+    for state in ({'state':'delivered','next_check_seconds':300,'animated':True},
+                  {'state':'hidden_good_air','next_check_seconds':900,'aqi':46}):
+        child.connection.messages.append({'activity':state})
+        engine.step();assert service.activity==before
+    engine.shutdown()
+
+
+@pytest.mark.parametrize('denials',[0,1,5,6])
+def test_record_reader_retries_only_brief_permission_denials(tmp_path,monkeypatch,denials):
+    path=tmp_path/'status.json';path.write_text('{"state":"RUNNING"}')
+    original=Path.open;calls=[];delays=[]
+    def contended(self,*args,**kwargs):
+        if self==path:
+            calls.append(None)
+            if len(calls)<=denials:raise PermissionError('private file path')
+        return original(self,*args,**kwargs)
+    monkeypatch.setattr(Path,'open',contended);monkeypatch.setattr(app.time,'sleep',delays.append)
+    if denials==6:
+        with pytest.raises(ConfigError,match='missing or invalid') as error:app.read_record(path)
+        assert 'private' not in str(error.value)
+    else:assert app.read_record(path)=={'state':'RUNNING'}
+    assert len(calls)==min(denials+1,6)
+    assert delays==[.01*(i+1) for i in range(min(denials,5))]
+    assert sum(delays)<=.15+1e-9
+
+
+@pytest.mark.parametrize('contents',['{','[]','{"pid":NaN}','{"text":"private","pid":Infinity}'])
+def test_invalid_record_is_never_retried_or_replaced_with_cached_success(tmp_path,monkeypatch,contents):
+    path=tmp_path/'status.json';path.write_text(contents)
+    pause=Mock();monkeypatch.setattr(app.time,'sleep',pause)
+    with pytest.raises(ConfigError) as error:app.read_record(path)
+    pause.assert_not_called();assert 'private' not in str(error.value)
+
+
+def test_missing_record_still_fails_immediately(tmp_path,monkeypatch):
+    pause=Mock();monkeypatch.setattr(app.time,'sleep',pause)
+    with pytest.raises(ConfigError):app.read_record(tmp_path/'missing.json')
+    pause.assert_not_called()

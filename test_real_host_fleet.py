@@ -180,6 +180,7 @@ def test_actual_workers_publish_consume_commands_and_close_the_bridge(tmp_path, 
                 return body if body.get('p') else None
             media = wait_for(playing, process, diagnostics)
             assert 'SYNTHETIC TRACK' in media['t'] and 0 <= media['g'] <= 24
+            wait_for(lambda: (snapshot()['services']['media'].get('activity') or {}).get('state')=='media_playing',process,diagnostics)
             assert media.get('m', False) is reduced_motion
             queue = focus_control.FocusCommandQueue(state / 'focus_commands')
             for action, phase in (('start', 'focus_running'), ('pause', 'focus_paused')):
@@ -195,6 +196,9 @@ def test_actual_workers_publish_consume_commands_and_close_the_bridge(tmp_path, 
             wait_for(lambda: panel.payloads['companion0']['draw'] == expected_mood, process, diagnostics)
             status = invoke('status')
             assert status['live'] and status['config_matches']
+            activity=status['services']['media']['activity']
+            assert activity['state']=='media_playing'
+            assert set(activity)=={'state','next_check_seconds','reported_at'}
             assert all(status['services'][name]['live'] for name in SERVICES)
             shutdown_at = time.monotonic()
             assert invoke('stop')['state'] == 'STOP_REQUESTED'
