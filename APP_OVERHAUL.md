@@ -216,3 +216,16 @@ The separate 3.3 candidate restores original water, kelp, bubble and reef colour
 while preserving the newer visitors, motion and compact storage. See
 `OCEAN_PALETTE.md`. The user approved the restored palette preview on October 29. Guarded
 installation and physical colour verification remain.
+
+
+## Explicit AQI reading follow-up
+
+The static and animated AQI payloads previously lost their AQI label at three
+digits. The proposed sender keeps full-size AQI/value glyphs in the same lane by
+reducing only their inter-group gap to one black column for 100-500. Shorter
+readings, icon motion, category colours, severity rail, metadata, scheduling and
+static safety policy remain unchanged. The frozen/current payload review covers
+19 illustrative readings and all six categories; exhaustive output contracts
+cover all 501 readings in both modes and protect other shared-renderer callers.
+See `AQI_READABILITY.md`. Preview approval, host adoption and physical legibility
+remain separate gates; this follow-up makes no live changes.

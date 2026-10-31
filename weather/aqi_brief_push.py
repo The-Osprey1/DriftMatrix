@@ -42,7 +42,7 @@ except ImportError:
 _ROOT = str(Path(__file__).resolve().parent.parent)
 if _ROOT not in sys.path:
     sys.path.append(_ROOT)
-from visual_system import PEARL, RGB, draw_comet, render_rich_lane, scale_color  # noqa: E402
+from visual_system import LABEL_GAP, PEARL, RGB, draw_comet, render_rich_lane, scale_color  # noqa: E402
 import firmware_compat
 import panel_gate  # noqa: E402
 import threading
@@ -450,10 +450,12 @@ def _lane_bytes(snapshot: AQISnapshot) -> bytes:
     """Encode the stable 23x8 information lane as exact RGB888 pixels."""
 
     aqi = min(500, max(0, int(round(float(snapshot.us_aqi)))))
-    # "AQI 72" in the category colour; three-digit values drop the label
-    # (render_rich_lane does that when it does not fit) and the icon says it.
+    # Keep AQI explicit even at three digits. Full-size "AQI" (11px), a
+    # black column and three full-size digits (11px) use the exact 23px lane.
+    # Shorter readings retain their established spacing and position.
     frame = render_rich_lane(str(aqi), fraction=aqi / AQI_METER_MAX, stops=AQI_RAIL_STOPS,
-                             label="AQI", label_color=AQI_COLORS[snapshot.level])
+                             label="AQI", label_color=AQI_COLORS[snapshot.level],
+                             label_gap=1 if aqi >= 100 else LABEL_GAP)
     assert all(frame[y][GUTTER_X] == BLACK for y in range(HEIGHT))
     return bytes(
         channel

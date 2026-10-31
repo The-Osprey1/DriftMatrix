@@ -39,16 +39,24 @@
     "lane_sha256": "ebffb1b874703043789448a6deba368114ee12630abc41e112f807df1a4db40a"
   },
   "aqi-125": {
-    "lane_sha256": "8f7230aedcc3cef936a85dfa5a5df9382265f5b4eeb6a6fa65b7e8116dc4c89d"
+    "lane_sha256": "4bb6538e1b3591ee657f2bd0ca556a94a309070438a206d2143ede4ff859ba38",
+    "previous_lane_sha256": "8f7230aedcc3cef936a85dfa5a5df9382265f5b4eeb6a6fa65b7e8116dc4c89d",
+    "change": "Retain explicit AQI label using one black column before the unchanged full-size value glyphs."
   },
   "aqi-175": {
-    "lane_sha256": "7ed25be1fee88fd767ce3c46e8b7d7a035fa4a24dc032d6ec7df3057128b3145"
+    "lane_sha256": "10cc8ddafc7e930ea65df90333c1546d409156b81353023999e53ceda9f53478",
+    "previous_lane_sha256": "7ed25be1fee88fd767ce3c46e8b7d7a035fa4a24dc032d6ec7df3057128b3145",
+    "change": "Retain explicit AQI label using one black column before the unchanged full-size value glyphs."
   },
   "aqi-250": {
-    "lane_sha256": "a70a7deffc305306e4d640869dd5cbbca04f0d4effeb7cd15bd3850b76d1ad45"
+    "lane_sha256": "1a7ae1897650530787d78898e6392e30b07100425896379d106f8915fc58ff36",
+    "previous_lane_sha256": "a70a7deffc305306e4d640869dd5cbbca04f0d4effeb7cd15bd3850b76d1ad45",
+    "change": "Retain explicit AQI label using one black column before the unchanged full-size value glyphs."
   },
   "aqi-350": {
-    "lane_sha256": "4c20d016f367ff5890b73da238cd61f64e44b5420bafa1ae94395bbf878d25fd"
+    "lane_sha256": "bd2787c76454c74f099cee9444f4750e64530b8798324ea330a64f7901c0e961",
+    "previous_lane_sha256": "4c20d016f367ff5890b73da238cd61f64e44b5420bafa1ae94395bbf878d25fd",
+    "change": "Retain explicit AQI label using one black column before the unchanged full-size value glyphs."
   },
   "companion-idle": {
     "lane_sha256": "dc23dc301939ae9d24aedd16668760c36ce9d307000d3220499c9101a11b760b"
