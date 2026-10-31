@@ -145,7 +145,7 @@ def test_feed_worker_forwards_settings_wakes_and_closes_session(make_config, mon
     monkeypatch.setattr(module, "fetch_weather" if name == "weather" else "fetch_air_quality", fetch)
     if name == "weather":
         scene = SimpleNamespace(kind="clear", icon_kind="sun", text="TEST", low_f=50, high_f=70)
-        monkeypatch.setattr(module, "choose_scene", lambda value: scene)
+        monkeypatch.setattr(module, "choose_scene", lambda value, **kw: scene)
     else:
         monkeypatch.setattr(module, "is_relevant", lambda *args, **kwargs: True)
     build = Mock(return_value={"text": "TEST"})

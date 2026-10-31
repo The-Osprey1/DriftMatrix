@@ -17,7 +17,9 @@ class RotationPolicyTests(unittest.TestCase):
             policy.TARGET_ORDER,
             (
                 "Time",
+                "wxalert",
                 "weatherbrief",
+                "wxnext",
                 "nowplaying",
                 "Time",
                 "ocean",

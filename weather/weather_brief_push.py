@@ -23,7 +23,7 @@ import json
 import math
 import sys
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime, timezone
 from functools import lru_cache
 from io import BytesIO
@@ -38,9 +38,11 @@ except ImportError:
     sys.exit("Missing dependencies. Run: pip install requests pillow")
 
 try:
-    from . import weather_canvas as canvas
+    from . import nws, weather_canvas as canvas, wx_pages
 except ImportError:  # Direct execution from the weather directory.
+    import nws  # type: ignore[no-redef]
     import weather_canvas as canvas  # type: ignore[no-redef]
+    import wx_pages  # type: ignore[no-redef]
 
 # The panel-wide calm-glance lane lives in the repository root's
 # visual_system; the scheduled task runs this file directly, which puts only
@@ -159,6 +161,15 @@ class WeatherSnapshot:
     precipitation_probabilities: tuple[int, ...]
     precipitation_mm: tuple[float, ...]
     forecast_codes: tuple[int, ...]
+    # Optional context for the outlook page (wxnext); parsed leniently, so a
+    # response without them still yields the core weatherbrief.
+    wind_gust_mph: float | None = None
+    sunrise: tuple[datetime, ...] = ()
+    sunset: tuple[datetime, ...] = ()
+    daily_high_f: tuple[float, ...] = ()
+    daily_low_f: tuple[float, ...] = ()
+    daily_codes: tuple[int, ...] = ()
+    daily_rain_probability: tuple[int, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -296,7 +307,50 @@ def parse_weather(payload: Mapping[str, Any], now: datetime | None = None) -> We
         precipitation_probabilities=tuple(probabilities),
         precipitation_mm=tuple(precipitation),
         forecast_codes=tuple(codes),
+        wind_gust_mph=_optional_number(current.get("wind_gusts_10m")),
+        sunrise=_optional_times(daily.get("sunrise"), zone),
+        sunset=_optional_times(daily.get("sunset"), zone),
+        daily_high_f=_optional_numbers(daily.get("temperature_2m_max")),
+        daily_low_f=_optional_numbers(daily.get("temperature_2m_min")),
+        daily_codes=tuple(int(round(v)) for v in _optional_numbers(daily.get("weather_code"))),
+        daily_rain_probability=tuple(
+            max(0, min(100, int(round(v))))
+            for v in _optional_numbers(daily.get("precipitation_probability_max"))
+        ),
     )
+
+
+def _optional_number(value: Any) -> float | None:
+    try:
+        return _finite_number(value, "optional")
+    except ValueError:
+        return None
+
+
+def _optional_numbers(values: Any) -> tuple[float, ...]:
+    """Every value up to the first missing one; () when the field is absent."""
+
+    if not isinstance(values, Sequence) or isinstance(values, (str, bytes)):
+        return ()
+    out: list[float] = []
+    for value in values:
+        number = _optional_number(value)
+        if number is None:
+            break
+        out.append(number)
+    return tuple(out)
+
+
+def _optional_times(values: Any, zone: timezone | ZoneInfo) -> tuple[datetime, ...]:
+    if not isinstance(values, Sequence) or isinstance(values, (str, bytes)):
+        return ()
+    out: list[datetime] = []
+    for value in values:
+        try:
+            out.append(_local_datetime(value, zone, "optional"))
+        except ValueError:
+            break
+    return tuple(out)
 
 
 # Open-Meteo's documented WMO interpretation codes. Exact membership keeps
@@ -334,25 +388,45 @@ def _eta_text(minutes: int) -> str:
 
 def _rain_candidate(probability: int, amount_mm: float, code: int) -> bool:
     category = weather_category(code)
+    # A precipitation weather code with nothing forecast to fall is the model's
+    # marine-layer drizzle guess; on its own it set off false countdowns.
     return (
         probability >= RAIN_PROBABILITY_THRESHOLD
         or amount_mm >= RAIN_AMOUNT_THRESHOLD_MM
-        or (category in PRECIPITATION_ICONS and probability >= 25)
+        or (category in PRECIPITATION_ICONS and probability >= 25 and amount_mm > 0)
     )
 
 
-def choose_scene(snapshot: WeatherSnapshot, now: datetime | None = None) -> WeatherScene:
-    """Prefer a useful precipitation countdown; otherwise show current weather."""
+def choose_scene(
+    snapshot: WeatherSnapshot,
+    now: datetime | None = None,
+    observation: nws.Observation | None = None,
+) -> WeatherScene:
+    """Prefer a useful precipitation countdown; otherwise show current weather.
+
+    With a fresh station ``observation``, "now" is what the station saw: its
+    temperature and sky, and "NOW" only while it reports precipitation.  The
+    model still supplies the countdown, today's range and the timeline.
+    """
 
     zone = snapshot.observed_at.tzinfo or timezone.utc
     local_now = _coerce_now(now, zone)
+    temperature_f = snapshot.temperature_f
     current_kind = weather_category(snapshot.weather_code)
+    raining_now = current_kind in PRECIPITATION_ICONS
+    if observation is not None:
+        if observation.temperature_f is not None:
+            temperature_f = observation.temperature_f
+        if observation.icon_kind is not None:
+            current_kind = observation.icon_kind
+        raining_now = observation.precipitating
+    snapshot = replace(snapshot, temperature_f=temperature_f)
 
-    if current_kind in PRECIPITATION_ICONS:
+    if raining_now:
         return WeatherScene(
             kind="rain",
             text="NOW",
-            icon_kind=current_kind,
+            icon_kind=current_kind if current_kind in PRECIPITATION_ICONS else "rain",
             is_day=snapshot.is_day,
             temperature_f=snapshot.temperature_f,
             low_f=snapshot.low_f,
@@ -373,10 +447,8 @@ def choose_scene(snapshot: WeatherSnapshot, now: datetime | None = None) -> Weat
         code = snapshot.forecast_codes[index]
         if _rain_candidate(probability, amount, code):
             forecast_kind = weather_category(code)
-            if (
-                delta_minutes <= 0
-                and amount < RAIN_AMOUNT_THRESHOLD_MM
-                and forecast_kind not in PRECIPITATION_ICONS
+            if delta_minutes <= 0 and amount < RAIN_AMOUNT_THRESHOLD_MM and (
+                forecast_kind not in PRECIPITATION_ICONS or observation is not None
             ):
                 # A probability attached to the already-started dry interval
                 # is not evidence that rain is falling NOW.
@@ -409,6 +481,43 @@ def choose_scene(snapshot: WeatherSnapshot, now: datetime | None = None) -> Weat
         eta_minutes=None,
         precipitation_probabilities=snapshot.precipitation_probabilities,
         precipitation_mm=snapshot.precipitation_mm,
+    )
+
+
+def choose_outlook(
+    snapshot: WeatherSnapshot,
+    now: datetime | None = None,
+    observation: nws.Observation | None = None,
+) -> wx_pages.PageScene | None:
+    """What the outlook page (wxnext) should say right now, if anything.
+
+    Strong gusts win; then, between sunrise and sunset, today's sunset; after
+    sunset, tomorrow's forecast; before sunrise, today's.
+    """
+
+    zone = snapshot.observed_at.tzinfo or timezone.utc
+    local_now = _coerce_now(now, zone)
+    gust = snapshot.wind_gust_mph
+    if observation is not None and observation.wind_gust_mph is not None:
+        gust = observation.wind_gust_mph
+    if gust is not None and gust >= wx_pages.WIND_GUST_MPH:
+        return wx_pages.wind_scene(gust, snapshot.is_day)
+
+    sunrise = snapshot.sunrise[0] if snapshot.sunrise else None
+    sunset = snapshot.sunset[0] if snapshot.sunset else None
+    if sunrise is not None and sunset is not None and sunrise <= local_now < sunset:
+        return wx_pages.sunset_scene(local_now, sunrise, sunset)
+
+    day = 1 if sunset is not None and local_now >= sunset else 0
+    if len(snapshot.daily_high_f) <= day or len(snapshot.daily_low_f) <= day:
+        return None
+    code = snapshot.daily_codes[day] if len(snapshot.daily_codes) > day else None
+    icon_kind = weather_category(code) if code is not None else "unknown"
+    rain = (snapshot.daily_rain_probability[day]
+            if len(snapshot.daily_rain_probability) > day else None)
+    return wx_pages.forecast_scene(
+        icon_kind, snapshot.daily_high_f[day], snapshot.daily_low_f[day], rain,
+        kind="tomorrow" if day else "today",
     )
 
 
@@ -715,12 +824,17 @@ def request_params(latitude: float = LATITUDE, longitude: float = LONGITUDE) -> 
     return {
         "latitude": latitude,
         "longitude": longitude,
-        "current": "temperature_2m,weather_code,is_day",
+        "current": "temperature_2m,weather_code,is_day,wind_gusts_10m",
         "minutely_15": "precipitation_probability,precipitation,weather_code",
-        "daily": "temperature_2m_max,temperature_2m_min,weather_code,sunrise,sunset",
+        "daily": (
+            "temperature_2m_max,temperature_2m_min,weather_code,sunrise,sunset,"
+            "precipitation_probability_max"
+        ),
         "forecast_minutely_15": 8,
-        "forecast_days": 1,
+        # Two days: the outlook page shows tomorrow once today's sun has set.
+        "forecast_days": 2,
         "temperature_unit": "fahrenheit",
+        "wind_speed_unit": "mph",
         "precipitation_unit": "mm",
         "timezone": "auto",
     }
@@ -746,16 +860,73 @@ def fetch_weather(
 
 
 def push_payload(session: requests.Session, base_url: str, payload: Mapping[str, Any], *, timeout: float = REQUEST_TIMEOUT_SECONDS) -> None:
+    push_page(session, base_url, APP_NAME, payload, timeout=timeout)
+
+
+def push_page(session: requests.Session, base_url: str, app_name: str, payload: Mapping[str, Any], *, timeout: float = REQUEST_TIMEOUT_SECONDS) -> None:
     body = firmware_compat.prepare_payload(base_url, payload)
-    with panel_gate.mutation(GATE_SOURCE, "push", APP_NAME, body=body) as gate:
+    with panel_gate.mutation(GATE_SOURCE, "push", app_name, body=body) as gate:
         response = session.put(
-            f"{base_url.rstrip('/')}{PUSH_PATH}",
+            f"{base_url.rstrip('/')}/api/v1/apps/pushed/{app_name}",
             json=body,
             timeout=timeout,
         )
         gate.observe(response)
     if not 200 <= response.status_code < 300:
         raise RuntimeError(f"AWTRIX HTTP {response.status_code}: {response.text[:200]}")
+
+
+# The extra pages change rarely; push them on change, plus a keep-alive well
+# inside their lifetime, rather than on every weather cycle.
+EXTRA_KEEPALIVE_SECONDS = 600
+
+
+class ExtraPages:
+    """Decide and deliver the outlook and alert pages for one weather cycle."""
+
+    def __init__(self, *, outlook: bool, alerts: bool, min_severity: str,
+                 latitude: float, longitude: float) -> None:
+        self.outlook = outlook
+        self.alerts = alerts
+        self.min_severity = min_severity
+        self.latitude = latitude
+        self.longitude = longitude
+        self.sent: dict[str, tuple[str, float]] = {}
+        self.last_alerts: list[nws.Alert] = []
+
+    def scenes(self, session: Any, snapshot: WeatherSnapshot,
+               observation: nws.Observation | None, timeout: float,
+               now: datetime | None = None) -> list[wx_pages.PageScene]:
+        found: list[wx_pages.PageScene] = []
+        if self.outlook:
+            outlook = choose_outlook(snapshot, now=now, observation=observation)
+            if outlook is not None:
+                found.append(outlook)
+        if self.alerts:
+            try:
+                self.last_alerts = nws.active_alerts(
+                    session, self.latitude, self.longitude,
+                    min_severity=self.min_severity, now=now, timeout=timeout,
+                )
+            except (requests.RequestException, ValueError) as error:
+                # Keep the last answer for one failed cycle rather than drop
+                # a warning because api.weather.gov blinked.
+                print(f"NWS alerts unavailable: {error}")
+            reference = now or datetime.now(timezone.utc)
+            live = [alert for alert in self.last_alerts if alert.expires > reference]
+            if live:
+                found.append(wx_pages.alert_scene(live[0], reference))
+        return found
+
+    def due(self, scene: wx_pages.PageScene, payload: Mapping[str, Any],
+            rebooted: bool, clock: float) -> bool:
+        digest = json.dumps(payload, sort_keys=True)
+        previous = self.sent.get(scene.app)
+        return (rebooted or previous is None or previous[0] != digest
+                or clock - previous[1] >= EXTRA_KEEPALIVE_SECONDS)
+
+    def mark_sent(self, scene: wx_pages.PageScene, payload: Mapping[str, Any], clock: float) -> None:
+        self.sent[scene.app] = (json.dumps(payload, sort_keys=True), clock)
 
 
 def read_panel_health(session: requests.Session, base_url: str, *, timeout: float = REQUEST_TIMEOUT_SECONDS) -> PanelHealth | None:
@@ -810,6 +981,30 @@ def save_preview(scene: WeatherScene, path: Path, scale: int = 18, gap: int = 1)
     return path
 
 
+def deliver_extra_pages(extras: ExtraPages, session: requests.Session, awtrix: str,
+                        snapshot: WeatherSnapshot, observation: nws.Observation | None,
+                        timeout: float, rebooted: bool) -> None:
+    """Push wxnext / wxalert when they change.  A failure here is logged and
+    never costs the main weather page its cycle."""
+
+    try:
+        scenes = extras.scenes(session, snapshot, observation, timeout)
+    except Exception as error:  # noqa: BLE001 - extras are best effort
+        print(f"Extra weather pages skipped: {error}")
+        return
+    for extra in scenes:
+        try:
+            payload = wx_pages.build_payload(extra)
+            clock = time.monotonic()
+            if not extras.due(extra, payload, rebooted, clock):
+                continue
+            push_page(session, awtrix, extra.app, payload, timeout=timeout)
+            extras.mark_sent(extra, payload, clock)
+            print(f"Updated: {wx_pages.summary(extra)}")
+        except (requests.RequestException, RuntimeError, OSError, ValueError) as error:
+            print(f"{extra.app} not delivered: {error}")
+
+
 def _scene_summary(scene: WeatherScene) -> str:
     if scene.kind == "rain":
         return f"{scene.icon_kind} {scene.text} (eta={scene.eta_minutes}m)"
@@ -826,8 +1021,20 @@ def run(
     preview_path: Path | None = None,
     *, stop_event=None, refresh_seconds=None, request_timeout_seconds=None,
     quiet_hours=None, timezone_name=None,
+    observation_stations: Sequence[str] = (),
+    outlook: bool = False,
+    alerts: bool = False,
+    alert_min_severity: str = "Moderate",
 ) -> None:
+    """The weather loop.  Observation, outlook and alerts are off unless asked
+    for, so a bare ``run()`` (and every test that drives one) stays offline
+    apart from the patched Open-Meteo fetch; the supervisor worker and the
+    command line turn them on."""
+
     refresh = REFRESH_SECONDS if refresh_seconds is None else float(refresh_seconds)
+    timeout = request_timeout_seconds or REQUEST_TIMEOUT_SECONDS
+    extras = ExtraPages(outlook=outlook, alerts=alerts, min_severity=alert_min_severity,
+                        latitude=latitude, longitude=longitude)
     def http(function, *args):
         return function(*args, **({"timeout": request_timeout_seconds} if request_timeout_seconds is not None else {}))
     session = requests.Session()
@@ -859,7 +1066,11 @@ def run(
         while stop_event is None or not stop_event.is_set():
             try:
                 snapshot = http(fetch_weather, session, latitude, longitude)
-                scene = choose_scene(snapshot)
+                observation = (
+                    nws.latest_observation(session, observation_stations, timeout=timeout)
+                    if observation_stations else None
+                )
+                scene = choose_scene(snapshot, observation=observation)
                 api_failures = 0
             except (requests.RequestException, ValueError, OSError) as error:
                 api_failures += 1
@@ -876,8 +1087,10 @@ def run(
             if stop_event is not None and stop_event.is_set():
                 return
 
+            rebooted = False
             if not dry_run:
                 health = http(read_panel_health, session, awtrix)
+                rebooted = panel_rebooted_since(previous_health, health)
                 if animated_push_succeeded and unplanned_reboot(previous_health, health):
                     safe_mode = True
                     print("Panel reboot detected after animated weather; using static icon safety mode")
@@ -890,7 +1103,12 @@ def run(
                 print(f"Preview: {saved}")
             if dry_run:
                 body_size = len(json.dumps(payload, separators=(",", ":")).encode("utf-8"))
-                print(f"Dry run: {_scene_summary(scene)}; payload={body_size} bytes")
+                source = f"obs {observation.station}" if observation is not None else "model"
+                print(f"Dry run: {_scene_summary(scene)} [{source}]; payload={body_size} bytes")
+                for extra in extras.scenes(session, snapshot, observation, timeout):
+                    extra_size = len(json.dumps(wx_pages.build_payload(extra),
+                                                separators=(",", ":")).encode("utf-8"))
+                    print(f"Dry run: {wx_pages.summary(extra)}; payload={extra_size} bytes")
                 panel_failures = 0
             else:
                 try:
@@ -900,7 +1118,11 @@ def run(
                     animated_push_succeeded = animated_push_succeeded or not safe_mode
                     panel_failures = 0
                     report_activity("delivered", next_check_seconds=refresh, animated=not safe_mode)
-                    print(f"Updated: {_scene_summary(scene)}{' [static safety]' if safe_mode else ''}")
+                    source = f"obs {observation.station}" if observation is not None else "model"
+                    print(f"Updated: {_scene_summary(scene)} [{source}]"
+                          f"{' [static safety]' if safe_mode else ''}")
+                    deliver_extra_pages(extras, session, awtrix, snapshot, observation,
+                                        timeout, rebooted)
                 except (requests.RequestException, RuntimeError, OSError) as error:
                     panel_failures += 1
                     report_activity("panel_unavailable", next_check_seconds=min(refresh, 15 * (2 ** min(panel_failures - 1, 5))))
@@ -929,7 +1151,10 @@ def run_worker(config: DriftMatrixConfig, stop_event: threading.Event) -> int:
     run(awtrix=config.panel.url, latitude=options["latitude"], longitude=options["longitude"],
         static_only=options.get("static_only", False), stop_event=stop_event,
         refresh_seconds=options.get("refresh_seconds"), request_timeout_seconds=options.get("request_timeout_seconds"),
-        quiet_hours=config.panel.quiet_hours, timezone_name=config.panel.timezone)
+        quiet_hours=config.panel.quiet_hours, timezone_name=config.panel.timezone,
+        observation_stations=tuple(options.get("observation_stations", nws.DEFAULT_STATIONS)),
+        outlook=options.get("outlook", True), alerts=options.get("alerts", True),
+        alert_min_severity=options.get("alert_min_severity", "Moderate"))
     return 0
 
 
@@ -946,6 +1171,10 @@ def parse_args() -> argparse.Namespace:
         help="send a one-frame icon for the first live canary or safety fallback",
     )
     parser.add_argument("--preview", type=Path)
+    parser.add_argument("--model-only", action="store_true",
+                        help="skip NWS station observations; use Open-Meteo for now")
+    parser.add_argument("--no-extras", action="store_true",
+                        help="push only weatherbrief, not the outlook and alert pages")
     return parser.parse_args()
 
 
@@ -962,6 +1191,9 @@ def main() -> int:
             static_only=args.static,
             preview_path=args.preview,
             stop_event=stop_event,
+            observation_stations=() if args.model_only else nws.DEFAULT_STATIONS,
+            outlook=not args.no_extras,
+            alerts=not args.no_extras,
         )
     return run_owned("weather", args.awtrix, default_data_dir(), stop_event, execute)
 

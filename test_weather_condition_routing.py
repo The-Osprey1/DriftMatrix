@@ -69,7 +69,10 @@ def test_every_documented_code_reaches_the_right_actual_payload(code, kind, day)
 @pytest.mark.parametrize("day", [False, True])
 def test_every_wet_forecast_keeps_exact_eta_and_its_precipitation_type(code, kind, day):
     when = NOW + timedelta(minutes=18, seconds=20)
-    snapshot = weather.parse_weather(provider(0, day, [(when, 25, 0.0, code)]), now=NOW)
+    # A trace amount (0.05 mm): since 2026-10-31 a wet code at 25% with nothing
+    # forecast to fall no longer starts a countdown.  The lane is unchanged --
+    # its colour comes from the 25%, and only >= 0.5 mm adds bar height.
+    snapshot = weather.parse_weather(provider(0, day, [(when, 25, 0.05, code)]), now=NOW)
     scene = weather.choose_scene(snapshot, now=NOW)
     assert scene.kind == "rain" and scene.eta_minutes == 19 and scene.text == "19M"
     assert scene.icon_kind == kind

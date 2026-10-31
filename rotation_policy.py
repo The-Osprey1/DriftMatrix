@@ -43,7 +43,9 @@ MIN_MUTATION_SPACING_SECONDS = 2.0
 # contextual pages and future apps fill out the product.
 TARGET_ORDER = (
     "Time",
+    "wxalert",
     "weatherbrief",
+    "wxnext",
     "nowplaying",
     "Time",
     "ocean",
@@ -56,6 +58,11 @@ TARGET_ORDER = (
     "nightkeeper",
 )
 
+# wxalert and wxnext (2026-10-31) bracket the weather page: an active NWS
+# warning comes first, then now, then the outlook (sunset time by day,
+# tomorrow after dark, gusts when they blow).  wxalert exists only while an
+# alert is in force, so most of the time it costs the loop nothing.
+#
 # Date and Battery were deliberately removed earlier. timepiece is the retired
 # custom clock, and pcstats1 is the retired second page from the old array push.
 #

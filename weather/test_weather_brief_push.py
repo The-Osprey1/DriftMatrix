@@ -717,8 +717,11 @@ class CadenceAndSafetyTests(unittest.TestCase):
     def test_open_meteo_query_requests_only_the_needed_two_hour_contract(self) -> None:
         params = app.request_params()
         self.assertEqual(
-            params["current"], "temperature_2m,weather_code,is_day"
+            params["current"], "temperature_2m,weather_code,is_day,wind_gusts_10m"
         )
+        self.assertIn("precipitation_probability_max", params["daily"])
+        self.assertEqual(params["forecast_days"], 2)
+        self.assertEqual(params["wind_speed_unit"], "mph")
         self.assertEqual(
             params["minutely_15"],
             "precipitation_probability,precipitation,weather_code",

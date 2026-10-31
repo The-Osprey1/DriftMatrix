@@ -30,6 +30,8 @@ noise rather than weather.
 
 from __future__ import annotations
 
+from typing import Sequence
+
 RGB = tuple[int, int, int]
 
 # Every ink here sits at or above 174 in its dominant channel so the shape
@@ -435,6 +437,165 @@ def _rich_frames(kind: str, is_day: bool) -> tuple[list[list[list[RGB]]], int]:
     return _rich_frames("cloudy", is_day)
 
 
+# ---------------------------------------------------------------- Outlook and alert icons
+#
+# The outlook page (wxnext) and the NWS alert page (wxalert) need pictures
+# the forecast icons do not cover.  Every silhouette pixel keeps a channel at
+# 174 or more so the shape survives brightness 1; motion follows a path.
+
+EXTRA = {
+    "sun_core": (255, 241, 179), "sun": (255, 195, 48), "horizon": (255, 103, 40),
+    "glint": (255, 150, 70), "ray": (255, 221, 110),
+    "gust": (130, 190, 255), "gust_tail": (200, 235, 255), "gust_head": (255, 247, 232),
+    "glass": (225, 223, 247), "mercury": (255, 52, 46), "mercury_hi": (255, 150, 120),
+    "shimmer": (255, 170, 60),
+    "flame_edge": (255, 58, 30), "flame": (255, 140, 30), "flame_core": (255, 232, 120),
+    "drop": (49, 208, 255), "drop_hi": (221, 252, 255), "water": (40, 120, 230),
+    "crest": (150, 225, 255),
+    "warn": (255, 170, 40), "warn_hot": (255, 214, 90), "bang": (255, 247, 232),
+}
+
+SUNSET_RAYS = (((3, 0), (4, 0)), ((1, 1), (6, 1)), ((0, 3), (7, 3)), ((1, 1), (6, 1)))
+GUST_PATHS = (
+    ((0, 1), (1, 1), (2, 1), (3, 1), (4, 1), (5, 1), (6, 0)),
+    ((0, 3), (1, 3), (2, 3), (3, 3), (4, 3), (5, 3), (6, 3), (7, 4)),
+    ((1, 6), (2, 6), (3, 6), (4, 6), (5, 5)),
+)
+THERMOMETER = (
+    "...g....",
+    "..g.g...",
+    "..g.g...",
+    "..g.g...",
+    "..g.g...",
+    ".gmmmg..",
+    ".gmmmg..",
+    "..ggg...",
+)
+FLAME_TIPS = (
+    ((3, 1), (3, 2), (6, 2), (6, 3)),
+    ((4, 1), (3, 2), (4, 2), (6, 3)),
+    ((3, 0), (3, 1), (3, 2), (6, 2)),
+)
+FLAME_BODY = (
+    "........",
+    "........",
+    "..e.....",
+    "..eae...",
+    ".eaaaee.",
+    ".eaccae.",
+    ".eaccae.",
+    "..eeee..",
+)
+DROP = ("...d....", "..ddd...", ".ddhdd..", ".ddddd..", "..ddd...")
+TRIANGLE = (
+    "...w....",
+    "..w.w...",
+    "..wbw...",
+    ".w.b.w..",
+    ".w.b.w..",
+    "w.....w.",
+    "w..b..w.",
+    "wwwwwww.",
+)
+TRIANGLE_PATH = (
+    (3, 0), (4, 1), (4, 2), (5, 3), (5, 4), (6, 5), (6, 6), (6, 7), (5, 7), (4, 7),
+    (3, 7), (2, 7), (1, 7), (0, 7), (0, 6), (0, 5), (1, 4), (1, 3), (2, 2), (2, 1),
+)
+EXTRA_KINDS = frozenset({"sunset", "wind", "heat", "fire", "flood", "alert"})
+
+
+def _stamp(frame, art: Sequence[str], tones: dict[str, RGB]) -> None:
+    for y, row in enumerate(art):
+        for x, key in enumerate(row):
+            if key in tones:
+                _put(frame, x, y, tones[key])
+
+
+def _extra_frames(kind: str) -> tuple[list[list[list[RGB]]], int]:
+    out = []
+    if kind == "sunset":
+        # Half a sun resting on the horizon; rays turn, the water glints.
+        for step in range(6):
+            frame = _rgb_blank()
+            for x in range(2, 6):
+                _put(frame, x, 2, EXTRA["sun"])
+            for y in (3, 4):
+                _put(frame, 1, y, EXTRA["sun"])
+                _put(frame, 6, y, EXTRA["sun"])
+                for x in range(2, 6):
+                    _put(frame, x, y, EXTRA["sun_core"])
+            for x in range(8):
+                _put(frame, x, 5, EXTRA["horizon"])
+            for x, y in SUNSET_RAYS[step % 4]:
+                _put(frame, x, y, EXTRA["ray"])
+            for x in range(8):
+                if (x + step) % 3 == 0:
+                    _put(frame, x, 6, EXTRA["glint"])
+                if (x - step) % 3 == 1 and 1 <= x <= 6:
+                    _put(frame, x, 7, EXTRA["glint"])
+            out.append(frame)
+        return out, 240
+    if kind == "wind":
+        # Three gusts with a bright head running along each, staggered.
+        for step in range(8):
+            frame = _rgb_blank()
+            for index, path in enumerate(GUST_PATHS):
+                for x, y in path:
+                    _put(frame, x, y, EXTRA["gust"])
+                head = (step + index * 3) % (len(path) + 2)
+                if head < len(path):
+                    _put(frame, *path[head], EXTRA["gust_head"])
+                    if head > 0:
+                        _put(frame, *path[head - 1], EXTRA["gust_tail"])
+            out.append(frame)
+        return out, 120
+    if kind == "heat":
+        # A thermometer whose column climbs, with heat rising beside it.
+        levels = (4, 3, 2, 1, 2, 3)
+        for step, top in enumerate(levels):
+            frame = _rgb_blank()
+            _stamp(frame, THERMOMETER, {"g": EXTRA["glass"], "m": EXTRA["mercury"]})
+            for y in range(top, 5):
+                _put(frame, 3, y, EXTRA["mercury"])
+            _put(frame, 2, 5, EXTRA["mercury_hi"])
+            for y in range(1, 6):
+                _put(frame, 6 + (y + step) % 2, y, EXTRA["shimmer"])
+            out.append(frame)
+        return out, 240
+    if kind == "fire":
+        # Three flame silhouettes cycle; the core breathes between them.
+        for step in range(6):
+            frame = _rgb_blank()
+            core = EXTRA["flame_core"] if step % 2 else EXTRA["flame"]
+            _stamp(frame, FLAME_BODY, {"e": EXTRA["flame_edge"], "a": EXTRA["flame"], "c": core})
+            for x, y in FLAME_TIPS[step % 3]:
+                _put(frame, x, y, EXTRA["flame_edge"])
+            out.append(frame)
+        return out, 120
+    if kind == "flood":
+        # A drop over rising water; the crest rolls left to right.
+        for step in range(8):
+            frame = _rgb_blank()
+            _stamp(frame, DROP, {"d": EXTRA["drop"], "h": EXTRA["drop_hi"]})
+            for x in range(8):
+                phase = (x - step) % 4
+                if phase == 0:
+                    _put(frame, x, 5, EXTRA["crest"])
+                _put(frame, x, 6, EXTRA["crest"] if phase in (0, 1) else EXTRA["water"])
+                _put(frame, x, 7, EXTRA["water"])
+            out.append(frame)
+        return out, 240
+    # Warning triangle: a bright spark runs clockwise round the outline.
+    for step in range(len(TRIANGLE_PATH) // 2):
+        frame = _rgb_blank()
+        _stamp(frame, TRIANGLE, {"w": EXTRA["warn"], "b": EXTRA["bang"]})
+        head = step * 2
+        _put(frame, *TRIANGLE_PATH[head], EXTRA["bang"])
+        _put(frame, *TRIANGLE_PATH[head - 1], EXTRA["warn_hot"])
+        out.append(frame)
+    return out, 120
+
+
 def frames(kind: str, is_day: bool = True):
     """Return (frames, delay_ms) for a condition.
 
@@ -448,6 +609,8 @@ def frames(kind: str, is_day: bool = True):
     # shares its original rain animation; unknown data must not invent a sky.
     if kind == "unknown":
         return [_rgb_blank()], 240
+    if kind in EXTRA_KINDS:
+        return _extra_frames(kind)
     return _rich_frames("rain" if kind == "freezing" else kind, is_day)
 
 

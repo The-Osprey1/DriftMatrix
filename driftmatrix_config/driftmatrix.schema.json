@@ -847,6 +847,28 @@
         },
         "static_only": {
           "type": "boolean"
+        },
+        "observation_stations": {
+          "type": "array",
+          "maxItems": 5,
+          "items": {
+            "type": "string",
+            "pattern": "^[A-Z0-9]{3,5}$"
+          }
+        },
+        "outlook": {
+          "type": "boolean"
+        },
+        "alerts": {
+          "type": "boolean"
+        },
+        "alert_min_severity": {
+          "enum": [
+            "Minor",
+            "Moderate",
+            "Severe",
+            "Extreme"
+          ]
         }
       },
       "dependencies": {
