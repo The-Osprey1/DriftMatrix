@@ -216,3 +216,17 @@ The separate 3.3 candidate restores original water, kelp, bubble and reef colour
 while preserving the newer visitors, motion and compact storage. See
 `OCEAN_PALETTE.md`. The user approved the restored palette preview on October 29. Guarded
 installation and physical colour verification remain.
+
+
+## Restored AQI lungs and explicit readings
+
+The requested AQI revision restores the preserved paired-lung silhouette and
+four-pose breath, replacing wind comets and the multicolour treatment with a
+consistent mint/pearl icon, neutral label and single-hue rail. Three-digit
+readings retain the explicit AQI label with full-size glyphs and one black
+column of separation. The current value, meter position, relevance, metadata,
+quiet hours and static recovery path remain protected; other app payloads are
+unchanged. See `AQI_READABILITY.md` for actual-payload comparisons, the original
+breath cadence and low-light/static views. The restored design must be reviewed
+before guarded host adoption, including the requested AQI animation; physical
+appearance remains separate. This follow-up makes no live changes.

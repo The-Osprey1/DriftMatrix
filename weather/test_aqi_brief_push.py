@@ -265,7 +265,7 @@ class AQIArtTests(unittest.TestCase):
                 self.assertNotEqual(graded, preview.BLACK)
 
     def test_icon_is_bounded_opaque_and_severity_controls_only_timing(self) -> None:
-        """Severity changes the colour and the comet's pace, never the shape.
+        """Severity changes only breathing cadence, never its palette or shape.
 
         Only the 8x8 icon is animated. The 23x8 information lane is a separate
         static bitmap, keeping decoded animation work off the rest of the panel.
@@ -296,7 +296,7 @@ class AQIArtTests(unittest.TestCase):
                 ]
             )
         self.assertTrue(all(item == geometries[0] for item in geometries[1:]))
-        # Clean air drifts; worse air hurries.
+        # Preserve the earlier severity-dependent breathing cadence.
         self.assertGreater(app.ICON_FRAME_MS[0], app.ICON_FRAME_MS[5])
 
     def test_static_safety_icon_is_one_frame(self) -> None:
@@ -331,7 +331,7 @@ class AQIWireTests(unittest.TestCase):
         self.assertEqual(len(decode_lane(payload)), 23 * 8 * 3)
         self.assertLess(len(json.dumps(payload).encode("utf-8")), app.SAFE_BODY_BYTES)
 
-    def test_icon_is_the_wind_and_lane_is_the_rich_rail(self) -> None:
+    def test_icon_is_the_lungs_and_lane_is_the_single_hue_rail(self) -> None:
         from visual_system import render_rich_lane
 
         value = snapshot(72)
@@ -342,16 +342,18 @@ class AQIWireTests(unittest.TestCase):
             for x in range(8):
                 self.assertEqual(frames[0].getpixel((x, y)), expected_icon.getpixel((x, y)))
         expected_lane = render_rich_lane("72", fraction=72 / app.AQI_METER_MAX, stops=app.AQI_RAIL_STOPS,
-                                         label="AQI", label_color=app.AQI_COLORS[1])
+                                         label="AQI", label_color=app.AQI_LABEL_COLOR)
         rendered_lane = decode_lane(payload)
         for y in range(8):
             for x in range(preview.LANE_X0, preview.LANE_X1 + 1):
                 self.assertEqual(lane_pixel(rendered_lane, x, y), expected_lane[y][x],
                                  f"lane differs at {x},{y}")
 
-    def test_face_moves_every_beat(self) -> None:
+    def test_lungs_inhale_and_exhale_without_a_loop_jump(self) -> None:
         shots = [list(app._icon_frame(0, phase).getdata()) for phase in range(app.ICON_MAX_FRAMES)]
-        self.assertEqual(len({tuple(s) for s in shots}), app.ICON_MAX_FRAMES)
+        self.assertEqual(len({tuple(s) for s in shots}), 3)
+        self.assertEqual(shots[1], shots[3])
+        self.assertTrue(all(shots[i] != shots[(i + 1) % 4] for i in range(4)))
 
     def test_payload_is_deterministic_for_all_categories(self) -> None:
         for value in (32, 82, 126, 178, 245, 360):
@@ -534,7 +536,7 @@ class PlannedRebootTests(unittest.TestCase):
         self.assertFalse(app.unplanned_reboot(old, app.PanelHealth(950, "panic")))
 
 
-class WindIconTests(unittest.TestCase):
+class LungIconTests(unittest.TestCase):
     def test_shared_palette_preserves_every_animated_pixel(self) -> None:
         for level, value in enumerate((32, 82, 126, 178, 245, 360)):
             encoded = app.build_icon_gif(snapshot(value))
@@ -546,26 +548,22 @@ class WindIconTests(unittest.TestCase):
                 surviving = [colour for colour in lit if max(colour) >= 174]
                 self.assertGreaterEqual(len(surviving), len(lit) * 0.6)
 
-    def test_comets_run_the_whole_gust_and_never_leave_the_glyph(self) -> None:
-        glyph = {p for path in app.WIND_GUSTS for p in path}
+    def test_complete_lung_silhouette_and_airway_stay_connected_through_breath(self) -> None:
+        glyph = preview.LEFT_LUNG | preview.RIGHT_LUNG | preview.AIRWAY
         for level in range(6):
             for phase in range(app.ICON_MAX_FRAMES):
                 image = app._icon_frame(level, phase)
                 lit = {(x, y) for y in range(8) for x in range(8) if image.getpixel((x, y)) != (0, 0, 0)}
                 self.assertEqual(lit, glyph)
-        # Over one cycle every pixel of every gust is visited by a comet head.
-        heads = set()
-        for phase in range(app.ICON_MAX_FRAMES):
-            image = app._icon_frame(1, phase)
-            heads |= {p for p in glyph if image.getpixel(p) == app.PEARL}
-        self.assertEqual(heads, glyph)
+                for x, y in preview.AIRWAY - {(2, 2), (5, 2)}:
+                    self.assertEqual(image.getpixel((x, y)), preview.ICE)
 
-    def test_rail_track_is_tinted_never_grey(self) -> None:
+    def test_rail_uses_one_hue_and_retains_the_value_leader(self) -> None:
+        from visual_system import scale_color, TRACK_TINT
         lane = app._lane_bytes(snapshot(72))
         row7 = [tuple(lane[(7 * app.LANE_WIDTH + x) * 3:(7 * app.LANE_WIDTH + x) * 3 + 3]) for x in range(app.LANE_WIDTH)]
-        track = row7[-1]
-        self.assertNotEqual(len(set(track)), 1, "the empty rail should carry its hue, not grey")
-        self.assertIn(app.PEARL, row7)
+        self.assertEqual(row7[-1], scale_color(app.LUNG_COLOR, TRACK_TINT))
+        self.assertEqual(set(row7), {app.LUNG_COLOR, app.PEARL, row7[-1]})
 
     def test_every_category_fits_the_safety_budget(self) -> None:
         for value in (32, 82, 126, 178, 245, 360):

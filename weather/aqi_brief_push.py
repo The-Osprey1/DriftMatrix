@@ -1,7 +1,7 @@
 """Fetch US AQI and push the Jewelbox AQI Brief to AWTRIX.
 
 The PC fetches Open-Meteo air-quality data (CAMS ENSEMBLE) every 15 minutes.
-The panel receives one small pushed app: an opaque 8x8 flowing-wind GIF and
+The panel receives one small pushed app: an opaque 8x8 breathing-lungs GIF and
 a quiet static lane containing only the explicit current AQI value.
 No full-screen GIF or per-frame HTTP traffic is used.
 
@@ -42,7 +42,7 @@ except ImportError:
 _ROOT = str(Path(__file__).resolve().parent.parent)
 if _ROOT not in sys.path:
     sys.path.append(_ROOT)
-from visual_system import PEARL, RGB, draw_comet, render_rich_lane, scale_color  # noqa: E402
+from visual_system import LABEL_GAP, MINT, MIST, PEARL, RGB, render_rich_lane  # noqa: E402
 import firmware_compat
 import panel_gate  # noqa: E402
 import threading
@@ -106,19 +106,18 @@ REQUEST_TIMEOUT_SECONDS = 10
 
 ICON_WIDTH = 8
 ICON_HEIGHT = 8
-# One comet cycle along the wind lines.  An 8x8 icon animation costs no
-# contiguous block (measured); only full-width GIFs do.
-ICON_MAX_FRAMES = 10
+# Only the tiny 8x8 lung icon animates; the information lane stays static.
+ICON_MAX_FRAMES = 4
 ICON_MAX_BYTES = 4_200
 MAX_BODY_BYTES = 8_192
 SAFE_BODY_BYTES = 2_048
 LANE_HEIGHT = 8
 
-# How long the comet holds each step.  Clean air drifts, worse air hurries.
+# The preserved four-step breath cycle slows for better air.
 # Every value is a multiple of 120ms because the render tick is 24ms and GIF
 # delays quantise to 10ms - they only coincide at 120, and anything else beats
 # 2-tick/3-tick and visibly judders.
-ICON_FRAME_MS = (240, 240, 240, 120, 120, 120)
+ICON_FRAME_MS = (720, 600, 600, 480, 480, 360)
 
 MAX_OBSERVATION_AGE_SECONDS = 90 * 60
 MAX_OBSERVATION_LEAD_SECONDS = 20 * 60
@@ -325,49 +324,20 @@ def fetch_air_quality(
     return parse_air_quality(payload, now=now)
 
 
-# Wind (2026-10-03, to the Now Playing standard): the classic two-gust glyph
-# in the category colour, each line fading in from the left like Now
-# Playing's title edges, with the record's groove trick -- a PEARL comet with
-# a fading trail -- running along each gust.  Nothing moves off the 8px edge,
-# so nothing breaks apart (the drifting gusts before it wrapped and split; a
-# face after them read as a gimmick; lungs before those read as a hand).
-WIND_GUSTS = (
-    ((0, 2), (1, 2), (2, 2), (3, 2), (4, 2), (5, 2), (6, 1), (5, 0), (4, 0)),
-    ((0, 5), (1, 5), (2, 5), (3, 5), (4, 5), (5, 5), (6, 5), (7, 6), (6, 7), (5, 7)),
-)
-WIND_OFFSETS = (0, 5)  # the two comets run out of step
-WIND_FADE_IN = (0.30, 0.62)  # the first two pixels of each gust
-# The curl carries a second hue within each severity's colour family. The
-# severity itself remains the label/body colour and still grades the rail.
-WIND_ACCENTS: tuple[RGB, ...] = (
-    (55, 216, 255), (255, 157, 57), (255, 88, 105),
-    (255, 132, 183), (126, 176, 255), (255, 103, 96),
-)
+# Restore the preserved paired-lung silhouette and internal inhale/exhale
+# highlights. Severity retains the original breathing cadence, while one mint
+# palette, neutral text and a single-hue rail replace the multicolour treatment.
+LUNG_COLOR = MINT
+AQI_LABEL_COLOR = MIST
 AQI_METER_MAX = 300
-# The rail grades through the EPA category colours at their breakpoints.
-AQI_RAIL_STOPS = tuple(
-    (at / AQI_METER_MAX, AQI_COLORS[index]) for index, at in enumerate((0, 50, 100, 150, 200, 300))
-)
-
-
-def _gust_colours(level: int, path: Sequence[tuple[int, int]]) -> list[RGB]:
-    color = AQI_COLORS[level]
-    return [scale_color(color, WIND_FADE_IN[i]) if i < len(WIND_FADE_IN)
-            else color if i < 5 else WIND_ACCENTS[level]
-            for i in range(len(path))]
+AQI_RAIL_STOPS = ((0.0, LUNG_COLOR), (1.0, LUNG_COLOR))
 
 
 def _icon_frame(level: int, phase: int) -> Image.Image:
-    frame = [[BLACK] * ICON_WIDTH for _ in range(ICON_HEIGHT)]
-    for path, offset in zip(WIND_GUSTS, WIND_OFFSETS):
-        colours = _gust_colours(level, path)
-        for (x, y), colour in zip(path, colours):
-            frame[y][x] = colour
-        draw_comet(frame, path, (phase + offset) % ICON_MAX_FRAMES, colours)
+    frame = new_frame()
+    draw_lungs_jewel(frame, level, phase, color=LUNG_COLOR)
     image = Image.new("RGB", (ICON_WIDTH, ICON_HEIGHT), BLACK)
-    for y in range(ICON_HEIGHT):
-        for x in range(ICON_WIDTH):
-            image.putpixel((x, y), frame[y][x])
+    image.putdata([frame[y][x] for y in range(ICON_HEIGHT) for x in range(ICON_WIDTH)])
     return image
 
 
@@ -406,7 +376,7 @@ def _animated_icon(level: int) -> bytes:
 @lru_cache(maxsize=6)
 def _static_icon(level: int) -> bytes:
     stream = BytesIO()
-    # Static safety icon: the wind glyph at rest, no comet.
+    # Static safety icon: the complete lungs held at the middle breath pose.
     _icon_frame(level, ICON_MAX_FRAMES - 1).save(stream, format="GIF", optimize=True)
     data = stream.getvalue()
     validate_icon_gif(data)
@@ -441,7 +411,7 @@ def validate_icon_gif(data: bytes) -> None:
 
 
 def build_icon_gif(snapshot: AQISnapshot, animated: bool = True) -> bytes:
-    """Return only the 8x8 animated wind glyph; the information lane stays static."""
+    """Return only the 8x8 breathing lungs; the information lane stays static."""
 
     return _animated_icon(snapshot.level) if animated else _static_icon(snapshot.level)
 
@@ -450,10 +420,12 @@ def _lane_bytes(snapshot: AQISnapshot) -> bytes:
     """Encode the stable 23x8 information lane as exact RGB888 pixels."""
 
     aqi = min(500, max(0, int(round(float(snapshot.us_aqi)))))
-    # "AQI 72" in the category colour; three-digit values drop the label
-    # (render_rich_lane does that when it does not fit) and the icon says it.
+    # Keep AQI explicit even at three digits. Full-size "AQI" (11px), a
+    # black column and three full-size digits (11px) use the exact 23px lane.
+    # Shorter readings retain their established spacing and position.
     frame = render_rich_lane(str(aqi), fraction=aqi / AQI_METER_MAX, stops=AQI_RAIL_STOPS,
-                             label="AQI", label_color=AQI_COLORS[snapshot.level])
+                             label="AQI", label_color=AQI_LABEL_COLOR,
+                             label_gap=1 if aqi >= 100 else LABEL_GAP)
     assert all(frame[y][GUTTER_X] == BLACK for y in range(HEIGHT))
     return bytes(
         channel
@@ -566,8 +538,8 @@ def unplanned_reboot(previous: PanelHealth | None, current: PanelHealth | None) 
 
 
 def save_preview(snapshot: AQISnapshot, path: Path, scale: int = 18, gap: int = 1) -> Path:
-    # Preview the same wind and lane shipped by build_payload; the historic
-    # preview module still contains a retired lungs design.
+    # Preview the same restored lungs, neutral label and mint rail sent by
+    # build_payload, including the actual current information lane.
     icon = _icon_frame(snapshot.level, phase=2)
     lane = _lane_bytes(snapshot)
     frame = new_frame()

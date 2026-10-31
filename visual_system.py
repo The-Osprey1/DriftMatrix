@@ -566,20 +566,30 @@ def rail_survives_brightness_one(frame: Frame, *, y: int = 7, x0: int = LANE_X0)
 
 
 def render_rich_lane(value: str, *, fraction: float, stops: Sequence[tuple[float, RGB]],
-                     label: str | None = None, label_color: RGB = MIST) -> Frame:
-    """The 23x8 lane at Now Playing quality: the value in PEARL, an optional
-    label tinted in the page's colour (dropped before the value is squeezed),
-    and a rich rail on row 7."""
+                     label: str | None = None, label_color: RGB = MIST,
+                     label_gap: int = LABEL_GAP) -> Frame:
+    """The 23x8 lane with full-size value glyphs and a rich rail on row 7.
+
+    Labels use the normal three-pixel gap unless explicitly configured. A
+    positive gap always leaves a black column between label and value. A label
+    that still does not fit is dropped before the value is squeezed.
+    """
+    if type(label_gap) is not int or label_gap < 1:
+        raise ValueError("label_gap must be a positive integer")
     frame = new_frame()
     draw_rich_rail(frame, fraction, stops)
-    if label and glance_text_width(value, label) > TEXT_BUDGET:
-        label = None
-    width = glance_text_width(value, label)
+    width = measure_text(value)
+    if label:
+        labeled_width = measure_text(label) + label_gap + width
+        if labeled_width <= TEXT_BUDGET:
+            width = labeled_width
+        else:
+            label = None
     if width > TEXT_BUDGET:
         raise ValueError(f"{value!r} is {width}px; the lane holds {TEXT_BUDGET}px")
     x = LANE_X0 + (LANE_WIDTH - width) // 2
     if label:
-        x += draw_text(frame, label, x, 1, label_color) + LABEL_GAP
+        x += draw_text(frame, label, x, 1, label_color) + label_gap
     draw_text(frame, value, x, 1, PEARL)
     for row in range(HEIGHT):
         frame[row][GUTTER_X] = BLACK

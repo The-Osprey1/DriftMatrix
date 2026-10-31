@@ -33,22 +33,34 @@
     "lane_sha256": "3164b2c7a596f356e81cd80661200ec539c218675258446e48b75552dc5e07cc"
   },
   "aqi-28": {
-    "lane_sha256": "75faf1f4aca683b63f3e18111626dd47af8c89016935a485c2986b4f58d100b0"
+    "lane_sha256": "94debb46cad3c2585b3643303ed74970fd2407a7b7383970ec16e434e3b82173",
+    "previous_lane_sha256": "75faf1f4aca683b63f3e18111626dd47af8c89016935a485c2986b4f58d100b0",
+    "change": "User-requested neutral AQI label and single mint rail; complete numeric glyphs and original rail value retained."
   },
   "aqi-72": {
-    "lane_sha256": "ebffb1b874703043789448a6deba368114ee12630abc41e112f807df1a4db40a"
+    "lane_sha256": "abb8c63a5686787af29b065b05d4bdbb6118f1000739b23f6e3fd5c4149cd18b",
+    "previous_lane_sha256": "ebffb1b874703043789448a6deba368114ee12630abc41e112f807df1a4db40a",
+    "change": "User-requested neutral AQI label and single mint rail; complete numeric glyphs and original rail value retained."
   },
   "aqi-125": {
-    "lane_sha256": "8f7230aedcc3cef936a85dfa5a5df9382265f5b4eeb6a6fa65b7e8116dc4c89d"
+    "lane_sha256": "dcce50f41f3256d8932f461d6f1a3baee4ea0a017dca8ac684c51596abe5da84",
+    "previous_lane_sha256": "8f7230aedcc3cef936a85dfa5a5df9382265f5b4eeb6a6fa65b7e8116dc4c89d",
+    "change": "User-requested neutral AQI label and single mint rail; complete numeric glyphs and original rail value retained."
   },
   "aqi-175": {
-    "lane_sha256": "7ed25be1fee88fd767ce3c46e8b7d7a035fa4a24dc032d6ec7df3057128b3145"
+    "lane_sha256": "f6de08e5553519fca3f20e4a4342e9c3b0d6f21407e2230cbbc356887d1f4cc3",
+    "previous_lane_sha256": "7ed25be1fee88fd767ce3c46e8b7d7a035fa4a24dc032d6ec7df3057128b3145",
+    "change": "User-requested neutral AQI label and single mint rail; complete numeric glyphs and original rail value retained."
   },
   "aqi-250": {
-    "lane_sha256": "a70a7deffc305306e4d640869dd5cbbca04f0d4effeb7cd15bd3850b76d1ad45"
+    "lane_sha256": "0f2f4506705e25b1f63b2a197cc2d5375ec2ef3bce90737757b91966ac63030d",
+    "previous_lane_sha256": "a70a7deffc305306e4d640869dd5cbbca04f0d4effeb7cd15bd3850b76d1ad45",
+    "change": "User-requested neutral AQI label and single mint rail; complete numeric glyphs and original rail value retained."
   },
   "aqi-350": {
-    "lane_sha256": "4c20d016f367ff5890b73da238cd61f64e44b5420bafa1ae94395bbf878d25fd"
+    "lane_sha256": "2cb964766874426f678bd5a7aab02c30e7f550fd8737e6b96620e62c1db78457",
+    "previous_lane_sha256": "4c20d016f367ff5890b73da238cd61f64e44b5420bafa1ae94395bbf878d25fd",
+    "change": "User-requested neutral AQI label and single mint rail; complete numeric glyphs and original rail value retained."
   },
   "companion-idle": {
     "lane_sha256": "dc23dc301939ae9d24aedd16668760c36ce9d307000d3220499c9101a11b760b"

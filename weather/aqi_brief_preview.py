@@ -193,8 +193,8 @@ def _dim(color: RGB, strength: float) -> RGB:
     return gamma_lerp(BLACK, color, strength, gamma=PANEL_GAMMA)
 
 
-def draw_lungs_jewel(frame: Frame, level: int, phase: int) -> None:
-    color = AQI_COLORS[level]
+def draw_lungs_jewel(frame: Frame, level: int, phase: int, *, color: RGB | None = None) -> None:
+    color = AQI_COLORS[level] if color is None else color
     # These emitted-light weights are deliberately stronger than desktop
     # preview colors.  At gamma 2.2 / brightness 45 the old 42% body could read
     # as two disconnected dark bars; 58% keeps the anatomical silhouette whole
