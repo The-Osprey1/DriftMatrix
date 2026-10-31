@@ -22,6 +22,7 @@ import psutil
 from config_loader import ConfigError, SERVICE_NAMES
 from service_runtime import ServiceAlreadyRunning, scope_directory, stop_signals, supervisor_ownership
 from supervisor_worker import worker_main
+from service_activity import valid_report, valid_record
 
 WORKER_MODULES = {"hub": "utility_hub", "media": "now_playing_push", "pc_stats": "pc_stats_push",
                   "weather": "weather.weather_brief_push", "aqi": "weather.aqi_brief_push",
@@ -166,6 +167,7 @@ class ServiceState:
     escalated: bool = False
     pid: int | None = None
     created: float | None = None
+    activity: dict | None = None
 
 
 def spawn_child(config, service):
@@ -233,6 +235,7 @@ class Supervisor:
         service.state = "STARTING"
         service.last_error = None
         service.exit_code = None
+        service.activity = None
         try:
             child = self.spawn(self.config, service.name)
             service.child = child
@@ -253,6 +256,10 @@ class Supervisor:
                     continue
                 if message.get("state") == "RUNNING" and service.state == "STARTING":
                     service.state = "RUNNING"
+                if service.name in ("weather", "aqi") and service.state == "RUNNING":
+                    report = valid_report(message.get("activity"))
+                    if report is not None and (service.name == "aqi" or report["state"] != "hidden_good_air"):
+                        service.activity = {**report, "reported_at": time.time()}
                 if isinstance(message.get("error"), str) and message["error"].isidentifier():
                     service.last_error = message["error"]
         except (OSError, EOFError):
@@ -288,7 +295,8 @@ class Supervisor:
             "services": {name: {"state": item.state, "pid": item.pid, "process_created": item.created,
                 "exit_code": item.exit_code, "last_error": item.last_error, "restart_count": item.restart_count,
                 "circuit_open": item.circuit_open, "escalated": item.escalated,
-                "retry_in_seconds": None if item.restart_at is None else max(0, item.restart_at - now)}
+                "retry_in_seconds": None if item.restart_at is None else max(0, item.restart_at - now),
+                "activity": item.activity}
                 for name, item in self.services.items()}}
 
     def publish(self):
@@ -410,6 +418,8 @@ def status(config):
             result["services"][name] = {key: item[key] for key in
                 ("state", "pid", "exit_code", "last_error", "restart_count", "circuit_open", "escalated", "retry_in_seconds")}
             result["services"][name]["live"] = process_matches(item["pid"], item["process_created"])
+            if name in ("weather", "aqi"):
+                result["services"][name]["activity"] = valid_record(item.get("activity"))
         result["degraded"] = any(item["state"] == "FAILED" for item in result["services"].values())
         result["healthy"] = result["healthy"] and not result["degraded"]
         return result

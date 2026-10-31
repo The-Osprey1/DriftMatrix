@@ -45,7 +45,7 @@ py-modules = [
     "nightkeeper_logic", "notify_mirror", "now_playing_bridge", "now_playing_push",
     "panel_client", "panel_down_alert", "panel_down_popup", "panel_gate", "panel_maintenance",
     "panel_scene", "pc_readouts", "pc_stats_preview", "pc_stats_push", "quake_watch",
-    "runtime_paths", "sender_logging", "service_runtime", "sky_watch", "supervisor",
+    "runtime_paths", "sender_logging", "service_activity", "service_runtime", "sky_watch", "supervisor",
     "supervisor_worker", "utility_hub", "visual_system",
 ]
 

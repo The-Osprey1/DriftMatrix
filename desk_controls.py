@@ -357,7 +357,7 @@ class DeskControls:
         self.service_updated = tk.StringVar()
         ttk.Label(frame, textvariable=self.service_updated, style='Muted.TLabel').pack(anchor='w', pady=12)
         ttk.Button(frame, text='Refresh status', command=self.refresh_services).pack(anchor='w')
-        ttk.Label(frame, text='This view reads local process status. Opening it does not start, stop or restart services.',
+        ttk.Label(frame, text='This view reads local process status and feed reports. A sent page may not be on screen. Opening this view does not restart services.',
                   wraplength=590, style='Muted.TLabel').pack(anchor='w', pady=(14, 0))
 
     def refresh_services(self):
@@ -366,6 +366,10 @@ class DeskControls:
                 name: {'state': 'DISABLED' if name == 'drift_link' else 'RUNNING',
                        'live': name != 'drift_link', 'restart_count': 0}
                 for name in control_status.SERVICE_LABELS}}
+            snapshot['services']['weather']['activity'] = {'state':'delivered',
+                'next_check_seconds':300, 'animated':True, 'reported_at':time.time()}
+            snapshot['services']['aqi']['activity'] = {'state':'hidden_good_air',
+                'next_check_seconds':900, 'aqi':46, 'reported_at':time.time()}
             summary = control_status.summarize(snapshot)
         else:
             summary = self.model.host_summary()

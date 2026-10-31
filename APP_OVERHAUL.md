@@ -244,3 +244,14 @@ Historical frame hashes and timing protect the restoration. See
 `WEATHER_CONDITIONS.md` for actual-payload previews and verification. The user approved the restored original preview on October 31, 2026. Guarded
 host/motion adoption and physical acceptance remain separate. This source revision
 makes no live changes.
+
+
+## Feed visibility and retry explanations
+
+The next controls candidate distinguishes a healthy feed process from its page
+activity. Structured Weather/AQI reports explain successful delivery, existing
+good-air hiding and upstream/clock retries without parsing log text or polling
+the clock from the UI. Timestamp expiry, child-bound IPC and restart reset prevent
+old success from appearing current. The native isolated Services preview and
+verification scope are in `FEED_ACTIVITY.md`. The running host and shortcut are
+unchanged by this source implementation; guarded adoption remains separate.

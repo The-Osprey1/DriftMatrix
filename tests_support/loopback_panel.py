@@ -8,7 +8,7 @@ from urllib.parse import urlsplit
 
 
 class LoopbackPanel:
-    def __init__(self, *, media_version='2.3'):
+    def __init__(self, *, media_version='2.3', aqi_value=120):
         self.lock = threading.RLock()
         self.events, self.payloads, self.published = [], {}, []
         self.source = ''
@@ -55,8 +55,8 @@ class LoopbackPanel:
                                 precipitation_probability=[70]*8, precipitation=[0.2]*8, weather_code=[61]*8)))
                     if path == '/fixtures/aqi':
                         now = datetime.now(timezone.utc)
-                        return self.reply(dict(timezone='UTC', current=dict(time=now.isoformat(), us_aqi=120, pm2_5=28),
-                            hourly=dict(time=[(now + timedelta(hours=i)).isoformat() for i in range(6)], us_aqi=[120]*6)))
+                        return self.reply(dict(timezone='UTC', current=dict(time=now.isoformat(), us_aqi=aqi_value, pm2_5=28),
+                            hourly=dict(time=[(now + timedelta(hours=i)).isoformat() for i in range(6)], us_aqi=[aqi_value]*6)))
                 self.reply({}, 404)
 
             def do_PUT(self):

@@ -32,6 +32,8 @@ def make_config(tmp_path):
                                    restart={"max_attempts": attempts, "window_seconds": window})
         for name in enabled:
             document["services"][name]["enabled"] = True
+            if name in ("weather", "aqi"):
+                document["services"][name]["options"].update(latitude=1, longitude=2)
         return config_from_mapping(document, source_path=tmp_path / "config.json")
     return make
 
@@ -415,3 +417,41 @@ def test_child_bootstrap_reports_sanitized_results_and_closes_resources(make_con
     assert (runtime.scope_directory(config.panel.url, config.runtime.data_dir) / "logs" / "service_pc_stats.log").is_file()
     connection.close.assert_called_once()
     assert not any(thread.name == "supervisor-parent-watch" for thread in threading.enumerate())
+
+
+@pytest.mark.parametrize('name', ['weather','aqi'])
+def test_owned_child_activity_round_trips_status_and_resets_before_restart(make_config,monkeypatch,name):
+    child=fake_child();engine=app.Supervisor(make_config(enabled=(name,)),spawn=lambda *args:child)
+    engine.step();engine.step();service=engine.services[name]
+    child.connection.messages.append({'activity':{'state':'delivered','next_check_seconds':300,'animated':False}})
+    engine.step();assert service.activity['state']=='delivered'
+    engine.state='RUNNING';engine.directory.mkdir(parents=True);engine.publish()
+    monkeypatch.setattr(app,'process_matches',lambda pid,created:pid is not None)
+    result=app.status(engine.config)
+    assert result['services'][name]['activity']==service.activity
+    assert result['services'][name]['live']
+    engine.start_service(service,engine.monotonic(),restart=True)
+    assert service.activity is None
+    engine.shutdown()
+
+
+def test_other_workers_and_weather_cannot_claim_good_air_hiding(make_config):
+    children={name:fake_child() for name in ('weather','pc_stats')}
+    engine=app.Supervisor(make_config(enabled=tuple(children)),spawn=lambda config,name:children[name])
+    engine.step();engine.step()
+    for child in children.values():
+        child.connection.messages.append({'activity':{'state':'hidden_good_air','next_check_seconds':900,'aqi':46}})
+    engine.step()
+    assert all(engine.services[name].activity is None for name in children)
+    engine.shutdown()
+
+
+def test_missing_or_malformed_activity_keeps_legacy_status_readable(make_config,monkeypatch):
+    config=make_config(enabled=('aqi',));engine=app.Supervisor(config)
+    engine.directory.mkdir(parents=True);engine.state='RUNNING';engine.publish()
+    monkeypatch.setattr(app,'process_matches',lambda *args:False)
+    path=engine.directory/app.STATUS_FILE
+    for value in (None,{'reported_at':'private'},{'state':'fetching','next_check_seconds':10,'reported_at':-1}):
+        raw=engine.snapshot();raw['services']['aqi']['activity']=value
+        path.write_text(json.dumps(raw))
+        assert app.status(config)['services']['aqi']['activity'] is None

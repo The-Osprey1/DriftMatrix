@@ -63,14 +63,15 @@ def wait_for(predicate, process, diagnostics, timeout=35):
     pytest.fail('Actual host acceptance timed out: ' + diagnostics())
 
 
-@pytest.mark.parametrize('reduced_motion', [False, True], ids=['ordinary-media', 'reduced-media'])
-@pytest.mark.parametrize('media_version', ['2.3', '2.4'], ids=['approved-source', 'compact-source'])
-def test_actual_workers_publish_consume_commands_and_close_the_bridge(tmp_path, reduced_motion, media_version):
+@pytest.mark.parametrize('reduced_motion,media_version,aqi_value', [
+    (False,'2.3',120), (True,'2.3',120), (False,'2.4',120), (True,'2.4',46)],
+    ids=['ordinary-approved','reduced-approved','ordinary-compact','reduced-compact-good-air'])
+def test_actual_workers_publish_consume_commands_and_close_the_bridge(tmp_path, reduced_motion, media_version, aqi_value):
     runtime = Path(os.environ.get('DRIFTMATRIX_ACCEPTANCE_RUNTIME', str(ROOT))).resolve()
     media_source = f'now_playing-v{media_version}.ax'
     if os.environ.get('DRIFTMATRIX_ACCEPTANCE_RUNTIME'):
         assert runtime != ROOT, 'Installed acceptance must select a runtime outside the checkout'
-    for name in ('supervisor.py', 'supervisor_worker.py', 'utility_hub.py', 'pc_stats_push.py',
+    for name in ('supervisor.py', 'supervisor_worker.py', 'service_activity.py', 'service_runtime.py', 'utility_hub.py', 'pc_stats_push.py',
                  'now_playing_push.py', 'firmware_compat.py', 'panel_client.py', 'panel_gate.py', 'focus_control.py',
                  'focus_controller.py', 'icon_library.py', 'desk_companion.py',
                  'weather/weather_brief_push.py', 'weather/aqi_brief_push.py', 'weather/weather_icons.py', media_source):
@@ -88,7 +89,7 @@ def test_actual_workers_publish_consume_commands_and_close_the_bridge(tmp_path, 
         media_port = reserved.getsockname()[1]
     output = tmp_path / 'process.log'
     process = None
-    with LoopbackPanel(media_version=media_version) as panel:
+    with LoopbackPanel(media_version=media_version,aqi_value=aqi_value) as panel:
         document = config_loader.example_document()
         now_minute = datetime.now(timezone.utc).hour * 60 + datetime.now(timezone.utc).minute
         quiet = (now_minute + 600) % 1440
@@ -157,8 +158,22 @@ def test_actual_workers_publish_consume_commands_and_close_the_bridge(tmp_path, 
             with pytest.raises(service_runtime.ServiceAlreadyRunning):
                 with service_runtime.supervisor_ownership(panel.url, state):
                     pass
-            required = {'pcstats0', 'weatherbrief', 'aqibrief', 'companion0'}
+            required = {'pcstats0', 'weatherbrief', 'companion0'}
+            if aqi_value>=51:required.add('aqibrief')
             wait_for(lambda: required.issubset(panel.payloads), process, diagnostics)
+            def feed_reports_ready():
+                current=snapshot()['services']
+                return all((current[name].get('activity') or {}).get('state')==('hidden_good_air' if name=='aqi' and aqi_value<51 else 'delivered') for name in ('weather','aqi'))
+            wait_for(feed_reports_ready,process,diagnostics)
+            for name in ('weather','aqi'):
+                report=invoke('status')['services'][name]['activity']
+                if name=='aqi' and aqi_value<51:
+                    assert report['state']=='hidden_good_air' and report['aqi']==46
+                    assert 'aqibrief' not in panel.payloads
+                    assert ('DELETE','/api/v1/apps/aqibrief') in panel.events
+                else:
+                    assert report['state']=='delivered' and report['animated'] is False
+                assert report['next_check_seconds']==3600 and report['reported_at']>0
             bridge_url = f'http://127.0.0.1:{media_port}{now_playing_bridge.STATE_PATH}'
             def playing():
                 body = requests.get(bridge_url, timeout=0.5).json()

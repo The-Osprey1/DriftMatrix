@@ -16,9 +16,11 @@ from typing import Protocol
 
 from config_loader import CanonicalConfig, SERVICE_NAMES, normalize_panel_url
 from runtime_paths import data_directory
+from service_activity import valid_report
 
 DriftMatrixConfig = CanonicalConfig
 _started = ContextVar("worker_started", default=None)
+_activity = ContextVar("worker_activity", default=None)
 
 
 class ServiceWorker(Protocol):
@@ -88,12 +90,29 @@ def file_ownership(path):
 
 
 @contextmanager
-def worker_notifications(callback):
+def worker_notifications(callback, *, activity_callback=None):
     token = _started.set(callback)
+    activity_token = _activity.set(activity_callback)
     try:
         yield
     finally:
         _started.reset(token)
+        _activity.reset(activity_token)
+
+
+def report_activity(state, *, next_check_seconds, aqi=None, animated=None):
+    """Supervised feeds report evidence only; standalone entry points stay local."""
+    callback = _activity.get()
+    if callback is None:
+        return
+    report = {"state": state, "next_check_seconds": next_check_seconds}
+    if aqi is not None:
+        report["aqi"] = aqi
+    if animated is not None:
+        report["animated"] = animated
+    report = valid_report(report)
+    if report is not None:
+        callback(report)
 
 
 @contextmanager
