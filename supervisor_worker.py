@@ -58,7 +58,8 @@ def worker_main(document, source_path, service, module_name, stop_event, connect
                     setattr(sys, name, _StreamToLog(root, level))
             monitor.start()
             module = importlib.import_module(module_name)
-            with worker_notifications(lambda: notify({"state": "RUNNING"})):
+            with worker_notifications(lambda: notify({"state": "RUNNING"}),
+                                      activity_callback=lambda report: notify({"activity": report})):
                 code = module.run_worker(config, stop_event)
     except BaseException as error:
         # Do not serialize exception messages or configuration values into status.

@@ -102,3 +102,14 @@ acknowledgement failures, a batch larger than replay history, old preferences,
 invalid input, native action states, isolated demo operation and refresh cleanup.
 The built wheel's 11 runtime modules and resources were imported outside the
 checkout, and its native demo was exercised through the unified CLI.
+
+
+## Weather and Air quality activity
+
+The Services tab now explains why a feed page may be absent while its process is
+Running. Weather and Air quality report successful sends, intentional good-air
+hiding and provider/delivery retries through local supervisor status. Reports
+expire with the feed's next-check interval and are reset on worker restart. A
+sent page is not a claim that it is currently on screen. See
+[Feed activity](../FEED_ACTIVITY.md) for the native demo and evidence boundaries.
+Older hosts remain supported with an explicit activity-not-reported message.

@@ -52,7 +52,7 @@ from visual_system import MIST, render_glance_lane  # noqa: E402
 import firmware_compat
 import panel_gate  # noqa: E402
 import threading
-from service_runtime import DriftMatrixConfig, run_owned, worker_adapter, wait
+from service_runtime import DriftMatrixConfig, run_owned, worker_adapter, wait, report_activity
 from focus_control import default_data_dir
 
 try:
@@ -854,6 +854,8 @@ def run(
         previous_health: PanelHealth | None = None
         animated_push_succeeded = False
         print(f"Weather Brief -> {awtrix.rstrip('/')}{PUSH_PATH} every {refresh}s")
+        if not dry_run:
+            report_activity("fetching", next_check_seconds=request_timeout_seconds or REQUEST_TIMEOUT_SECONDS)
         while stop_event is None or not stop_event.is_set():
             try:
                 snapshot = http(fetch_weather, session, latitude, longitude)
@@ -861,6 +863,8 @@ def run(
                 api_failures = 0
             except (requests.RequestException, ValueError, OSError) as error:
                 api_failures += 1
+                if not dry_run:
+                    report_activity("data_unavailable", next_check_seconds=min(refresh, 15 * (2 ** min(api_failures - 1, 5))))
                 if api_failures in (1, 3) or api_failures % 12 == 0:
                     print(f"Weather data unavailable ({api_failures}): {error}")
                 if once:
@@ -895,9 +899,11 @@ def run(
                     http(push_payload, session, awtrix, payload)
                     animated_push_succeeded = animated_push_succeeded or not safe_mode
                     panel_failures = 0
+                    report_activity("delivered", next_check_seconds=refresh, animated=not safe_mode)
                     print(f"Updated: {_scene_summary(scene)}{' [static safety]' if safe_mode else ''}")
                 except (requests.RequestException, RuntimeError, OSError) as error:
                     panel_failures += 1
+                    report_activity("panel_unavailable", next_check_seconds=min(refresh, 15 * (2 ** min(panel_failures - 1, 5))))
                     if panel_failures >= SAFE_MODE_FAILURES and not safe_mode:
                         safe_mode = True
                         print("Repeated panel failures; latching static icon safety mode")

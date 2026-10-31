@@ -46,7 +46,7 @@ from visual_system import LABEL_GAP, MINT, MIST, PEARL, RGB, render_rich_lane  #
 import firmware_compat
 import panel_gate  # noqa: E402
 import threading
-from service_runtime import DriftMatrixConfig, run_owned, worker_adapter, wait, in_quiet_hours
+from service_runtime import DriftMatrixConfig, run_owned, worker_adapter, wait, in_quiet_hours, report_activity
 from focus_control import default_data_dir
 
 try:
@@ -596,12 +596,16 @@ def run(
         print(f"AQI Brief -> {awtrix.rstrip('/')}{PUSH_PATH} every {refresh}s")
         print("Air-quality data: Open-Meteo / CAMS ENSEMBLE")
 
+        if not dry_run:
+            report_activity("fetching", next_check_seconds=request_timeout_seconds or REQUEST_TIMEOUT_SECONDS)
         while stop_event is None or not stop_event.is_set():
             try:
                 snapshot = http(fetch_air_quality, session, latitude, longitude)
                 api_failures = 0
             except (requests.RequestException, ValueError, OSError) as error:
                 api_failures += 1
+                if not dry_run:
+                    report_activity("data_unavailable", next_check_seconds=min(refresh, 30 * (2 ** min(api_failures - 1, 4))))
                 if api_failures in (1, 3) or api_failures % 12 == 0:
                     print(f"AQI data unavailable ({api_failures}): {error}")
                 if once:
@@ -636,12 +640,15 @@ def run(
                         print(f"Hidden: {relevance_reason(snapshot)}")
                     except (requests.RequestException, RuntimeError, OSError) as error:
                         panel_failures += 1
+                        report_activity("panel_unavailable", next_check_seconds=min(refresh, 15 * (2 ** min(panel_failures - 1, 5))))
                         if panel_failures in (1, 3) or panel_failures % 12 == 0:
                             print(f"Panel unavailable ({panel_failures}): {error}")
                         if once:
                             raise
                         wait(stop_event, min(refresh, 15 * (2 ** min(panel_failures - 1, 5))), sleep=time.sleep)
                         continue
+                if not dry_run:
+                    report_activity("hidden_good_air", next_check_seconds=refresh, aqi=int(snapshot.us_aqi))
                 previous_aqi = snapshot.us_aqi
                 if once:
                     return
@@ -677,6 +684,7 @@ def run(
                         return
                     http(push_payload, session, awtrix, payload)
                     remote_visible = True
+                    report_activity("delivered", next_check_seconds=refresh, animated=not safe_mode)
                     animated_push_succeeded = animated_push_succeeded or not safe_mode
                     panel_failures = 0
                     print(
@@ -692,6 +700,7 @@ def run(
                             print(f"AQI activation deferred: {error}")
                 except (requests.RequestException, RuntimeError, OSError) as error:
                     panel_failures += 1
+                    report_activity("panel_unavailable", next_check_seconds=min(refresh, 15 * (2 ** min(panel_failures - 1, 5))))
                     if panel_failures >= SAFE_MODE_FAILURES and not safe_mode:
                         safe_mode = True
                         print("Repeated panel failures; latching static AQI icon safety mode")
