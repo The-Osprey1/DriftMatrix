@@ -41,7 +41,7 @@ def test_every_accepted_aqi_keeps_label_and_complete_value(animated):
         digits = str(value)
         # Fixed-width numeric and AQI glyphs establish independent expected positions.
         label_x, value_x = {1: (3, 17), 2: (1, 15), 3: (0, 12)}[len(digits)]
-        for text, x0, color in (("AQI", label_x, aqi.AQI_COLORS[sample.level]),
+        for text, x0, color in (("AQI", label_x, aqi.AQI_LABEL_COLOR),
                                 (digits, value_x, visual.PEARL)):
             for y, bits in enumerate(glyph_rows(text), 1):
                 assert pixels[y][x0:x0 + len(bits)] == [color if bit == "1" else visual.BLACK for bit in bits], value
@@ -53,19 +53,18 @@ def test_every_accepted_aqi_keeps_label_and_complete_value(animated):
 
 
 @pytest.mark.parametrize("animated", [False, True])
-def test_icons_rail_metadata_and_short_readings_match_frozen_wire_baseline(animated):
+def test_metadata_and_rail_value_preserve_frozen_wire_meaning(animated):
     for case in BASELINE["cases"]:
         if case["animated"] != animated:
             continue
-        value = case["value"]
-        _, current = payload(value, animated)
+        _, current = payload(case["value"], animated)
         original = case["payload"]
-        assert {k: v for k, v in current.items() if k != "draw"} == {k: v for k, v in original.items() if k != "draw"}
+        assert {k: v for k, v in current.items() if k not in ("draw", "icon")} == {k: v for k, v in original.items() if k not in ("draw", "icon")}
         before, after = lane(original), lane(current)
-        assert after[7] == before[7]  # Exact severity rail, including saturation/leader.
+        assert [pixel == visual.PEARL for pixel in after[7]] == [pixel == visual.PEARL for pixel in before[7]]
         assert all(after[y] == before[y] for y in (0, 6))
-        assert (current == original) == (value < 100)
-        decoded = gallery.decode(current)  # Includes opaque frame composition and black-gutter checks.
+        assert set(after[7]) <= {aqi.LUNG_COLOR, visual.PEARL, visual.scale_color(aqi.LUNG_COLOR, visual.TRACK_TINT)}
+        decoded = gallery.decode(current)
         assert decoded["bytes"] < 2048 and decoded["iconBytes"] <= 1024
         assert all(delay % 120 == 0 for delay in decoded["durations"])
 
@@ -85,7 +84,7 @@ def test_other_page_payloads_remain_byte_exact(animated):
 def test_label_value_and_gap_survive_existing_low_light_model(value):
     sample, body = payload(value, False)
     pixels = lane(body)
-    color = aqi.AQI_COLORS[sample.level]
+    color = aqi.AQI_LABEL_COLOR
     assert visual.is_safe_at_low_brightness(color)
     assert visual.is_safe_at_low_brightness(visual.PEARL)
     modeled = [[pixel if max(pixel) >= visual.LOW_BRIGHTNESS_DOMINANT_MIN else visual.BLACK for pixel in row] for row in pixels]
@@ -103,3 +102,17 @@ def test_oversized_optional_labels_still_yield_to_complete_value(gap):
     frame = visual.render_rich_lane("500", fraction=1, stops=aqi.AQI_RAIL_STOPS, label="VERY LONG LABEL", label_gap=gap)
     plain = visual.render_rich_lane("500", fraction=1, stops=aqi.AQI_RAIL_STOPS)
     assert frame == plain
+
+
+@pytest.mark.parametrize("level", range(6))
+def test_lung_palette_is_consistent_and_preserved_breath_poses_remain(level):
+    from weather import aqi_brief_preview as reference
+    expected_shape = reference.LEFT_LUNG | reference.RIGHT_LUNG | reference.AIRWAY
+    frames = [aqi._icon_frame(level, phase) for phase in range(4)]
+    for phase, frame in enumerate(frames):
+        shape = {(x, y) for y in range(8) for x in range(8) if frame.getpixel((x, y)) != visual.BLACK}
+        assert shape == expected_shape
+        assert frame.tobytes() == aqi._icon_frame(0, phase).tobytes()
+    assert frames[1].tobytes() == frames[3].tobytes()
+    counts = [sum(pixel == aqi.LUNG_COLOR for pixel in frame.getdata()) for frame in frames]
+    assert counts[0] < counts[1] < counts[2] and counts[3] == counts[1]

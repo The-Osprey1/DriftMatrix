@@ -38,9 +38,9 @@ def comparison(before: dict, after: dict, values=FEATURED, elapsed: int = 0,
     draw = ImageDraw.Draw(image)
     draw.fontmode = "1"
     font = ImageFont.load_default(size=16)
-    draw.text((16, 12), "AQI IDENTITY / illustrative offline readings", font=font, fill=(238, 242, 252))
+    draw.text((16, 12), "AQI BREATHING LUNGS / illustrative readings", font=font, fill=(238, 242, 252))
     draw.text((16, 43), "BEFORE", font=font, fill=(169, 185, 207))
-    draw.text((432, 43), "PROPOSED - explicit AQI at every value", font=font, fill=(165, 231, 207))
+    draw.text((432, 43), "PROPOSED - restored lungs, calm palette", font=font, fill=(165, 231, 207))
     for row, value in enumerate(values):
         y = 76 + row * 128
         draw.text((16, y), f"AQI {value}", font=font, fill=(238, 242, 252))
@@ -70,11 +70,8 @@ def main(argv=None) -> None:
             original = next(case["payload"] for case in frozen["cases"] if case["value"] == value and case["animated"] == animated)
             current = current_payload(value, animated)
             old_decoded, new_decoded = gallery.decode(original), gallery.decode(current)
-            assert old_decoded["durations"] == new_decoded["durations"]
-            assert original["icon"] == current["icon"]
-            assert new_decoded["bytes"] == old_decoded["bytes"] < 2048
-            if value < 100:
-                assert current == original
+            assert max(new_decoded["bytes"], old_decoded["bytes"]) < 2048
+            assert {k: v for k, v in original.items() if k not in ("icon", "draw")} == {k: v for k, v in current.items() if k not in ("icon", "draw")}
             entries[animated] = (old_decoded, new_decoded)
             cases.append({"value": value, "animated": animated, "before_payload": original,
                           "after_payload": current, "before": old_decoded, "after": new_decoded})
@@ -82,8 +79,8 @@ def main(argv=None) -> None:
                          **entries[True][0], "static": entries[False][0]}
         after[value] = {"id": f"aqi-{value}", "title": f"AQI {value}", "group": "Air quality",
                         **entries[True][1], "static": entries[False][1]}
-    comparison(before, after).save(args.output / "comparison.png")
-    comparison(before, after, low_light=True).save(args.output / "low-light.png")
+    comparison(before, after).save(args.output / "lungs-comparison.png")
+    comparison(before, after, low_light=True).save(args.output / "lungs-low-light.png")
     # One representative category per movie keeps every actual RGB colour in GIF's 256 entries.
     delay = 120
     period = sum(after[125]["durations"])
@@ -99,10 +96,10 @@ def main(argv=None) -> None:
         image.putdata([indices[pixel] for pixel in frame.getdata()])
         assert list(image.convert("RGB").getdata()) == list(frame.getdata())
         indexed.append(image)
-    indexed[0].save(args.output / "comparison.gif", save_all=True, append_images=indexed[1:],
+    indexed[0].save(args.output / "lungs-comparison.gif", save_all=True, append_images=indexed[1:],
                     duration=delay, loop=0, disposal=1, optimize=False)
     encoded_delays, elapsed = [], 0
-    with Image.open(args.output / "comparison.gif") as movie:
+    with Image.open(args.output / "lungs-comparison.gif") as movie:
         for index in range(movie.n_frames):
             movie.seek(index)
             assert list(movie.convert("RGB").getdata()) == list(frames[elapsed // delay].getdata())
@@ -111,7 +108,7 @@ def main(argv=None) -> None:
     assert elapsed == period
     data = {"before": list(before.values()), "after": list(after.values())}
     html = gallery.HTML.replace("App visual review", "AQI reading review")
-    html = html.replace("Values stay still while the icon moves.", "Full-size AQI labels now remain present for three-digit readings; only their gap changes.")
+    html = html.replace("Values stay still while the icon moves.", "The preserved lung poses breathe again in one mint/pearl palette. AQI labels remain explicit, with a neutral label and single-hue value rail.")
     (args.output / "index.html").write_text(html.replace("__DATA__", json.dumps(data).replace("</", "<\\/")), encoding="utf-8")
     manifest_cases = []
     for case in cases:
@@ -124,13 +121,13 @@ def main(argv=None) -> None:
                                "after_frame_sha256": frame_hashes(case["after"]),
                                "durations_ms": case["after"]["durations"], "bytes": case["after"]["bytes"]})
     result = {"baseline_head": frozen["head"], "baseline_sha256": hashlib.sha256(BASELINE.read_bytes()).hexdigest(),
-              "source_hashes": {name: hashlib.sha256((ROOT / name).read_bytes()).hexdigest() for name in ("visual_system.py", "weather/aqi_brief_push.py", "aqi_reading_review.py")},
+              "source_hashes": {name: hashlib.sha256((ROOT / name).read_bytes()).hexdigest() for name in ("visual_system.py", "weather/aqi_brief_push.py", "weather/aqi_brief_preview.py", "aqi_reading_review.py")},
               "firmware": "1.2.2", "cases": manifest_cases, "maximum_payload_bytes": max(case["after"]["bytes"] for case in cases),
-              "wire_size_delta_bytes": 0, "gif_sample_value": 125, "gif_sample_ms": period,
+              "payload_size_delta_range": [min(c["after"]["bytes"] - c["before"]["bytes"] for c in cases), max(c["after"]["bytes"] - c["before"]["bytes"] for c in cases)], "gif_sample_value": 125, "gif_sample_ms": period,
               "gif_sample_step_ms": delay, "gif_encoded_durations_ms": encoded_delays, "gif_exact_palette_colors": len(colors),
               "limits": "Actual decoded GIF/RGB888 payloads; illustrative values. Low-light is the existing per-channel 174-threshold model, not LED gamma or physical diffusion. No live changes."}
     (args.output / "review.json").write_text(json.dumps(result, indent=2) + "\n", encoding="utf-8")
-    print(json.dumps({key: result[key] for key in ("maximum_payload_bytes", "wire_size_delta_bytes", "gif_sample_ms", "gif_exact_palette_colors")}, indent=2))
+    print(json.dumps({key: result[key] for key in ("maximum_payload_bytes", "payload_size_delta_range", "gif_sample_ms", "gif_exact_palette_colors")}, indent=2))
 
 
 if __name__ == "__main__":

@@ -218,14 +218,15 @@ while preserving the newer visitors, motion and compact storage. See
 installation and physical colour verification remain.
 
 
-## Explicit AQI reading follow-up
+## Restored AQI lungs and explicit readings
 
-The static and animated AQI payloads previously lost their AQI label at three
-digits. The proposed sender keeps full-size AQI/value glyphs in the same lane by
-reducing only their inter-group gap to one black column for 100-500. Shorter
-readings, icon motion, category colours, severity rail, metadata, scheduling and
-static safety policy remain unchanged. The frozen/current payload review covers
-19 illustrative readings and all six categories; exhaustive output contracts
-cover all 501 readings in both modes and protect other shared-renderer callers.
-See `AQI_READABILITY.md`. Preview approval, host adoption and physical legibility
-remain separate gates; this follow-up makes no live changes.
+The requested AQI revision restores the preserved paired-lung silhouette and
+four-pose breath, replacing wind comets and the multicolour treatment with a
+consistent mint/pearl icon, neutral label and single-hue rail. Three-digit
+readings retain the explicit AQI label with full-size glyphs and one black
+column of separation. The current value, meter position, relevance, metadata,
+quiet hours and static recovery path remain protected; other app payloads are
+unchanged. See `AQI_READABILITY.md` for actual-payload comparisons, the original
+breath cadence and low-light/static views. The restored design must be reviewed
+before guarded host adoption, including the requested AQI animation; physical
+appearance remains separate. This follow-up makes no live changes.

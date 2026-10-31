@@ -27,7 +27,7 @@ def test_all_scenes_preserve_values_and_real_static_fallback(index, scenes):
     def lane(frame):
         return [v for y in range(8) for v in frame[y * 32 + 9:y * 32 + 32]]
     # Whole-lane contracts protect numbers, labels and rails from icon/motion
-    # edits. Four explicit AQI label restorations update their contract; old
+    # edits. Six explicit AQI layout/palette restorations update their contract; old
     # hashes remain in the fixture and exhaustive glyph tests cover the layout.
     digest = hashlib.sha256(''.join(lane(entry['frames'][0])).encode()).hexdigest()
     assert digest == baseline[entry['id']]['lane_sha256']
