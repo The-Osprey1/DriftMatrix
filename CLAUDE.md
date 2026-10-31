@@ -1,6 +1,6 @@
 # AWTRIX NG panel project
 
-One physical **32 x 8 RGB LED matrix** driven by **AWTRIX NG 1.1.2** on an ESP32.
+One physical **32 x 8 RGB LED matrix** driven by **AWTRIX NG 1.2.2** on an ESP32.
 Panel apps are Berry scripts (`.ax`); the PC side is Python senders plus pytest
 suites that model the on-device logic.
 
@@ -12,7 +12,7 @@ every claim that has been superseded, are in `PANEL_HISTORY.md`.
 | Fact | Value |
 | --- | --- |
 | Panel URL | `http://192.168.1.90` (mDNS `pixelclock.local` has advertised a stale second address — prefer the raw IP) |
-| Firmware / board | AWTRIX NG `1.1.2`, `awtrixng`, ESP32-D0WD-V3 4 MB, uid `680947376cfc` — a **replacement board since 2026-10-10** (the first, uid `680947376e9c`, died; see `PANEL_HISTORY.md` §14). Ulanzi TC001 pin map, CP210x USB-serial (COM4 when plugged into the PC) |
+| Firmware / board | AWTRIX NG `1.2.2` (pushed icons need a `data:image/gif;base64,` prefix — `firmware_compat.py`), `awtrixng`, ESP32-D0WD-V3 4 MB, uid `680947376cfc` — a **replacement board since 2026-10-10** (the first, uid `680947376e9c`, died; see `PANEL_HISTORY.md` §14). Ulanzi TC001 pin map, CP210x USB-serial (COM4 when plugged into the PC) |
 | Network | **static** `192.168.1.90`/24, gateway and DNS `192.168.1.1` (`netStatic: true` in `/api/v1/system`; the first board got .90 by DHCP), hostname `pixelclock`, Wi-Fi `<YOUR_WIFI_SSID>` |
 | Geometry | `panelWidth 32`, `panels 1`, `panelStart bottomRight`, `panelWiring rows`, serpentine off, mirror off, rotate off |
 | Coordinates | x = 0..31, y = 0..7, origin top-left in script space |
@@ -30,36 +30,31 @@ the panel rather than guessing. At boot, `GET /api/v1/logs` logs
 `vm heap +N (shared N)`, `max block N` and `install low-water N` for each
 script.
 
-- **What is installed** (`GET /apps` and the boot log, 2026-10-10, replacement board). The repo is not the device:
+- **What is installed** (`GET /apps` and the boot log, 2026-10-31). The repo is not the device:
 
-  | Script | Repo source | Bytes (repo-derived for moon/ocean) | `meta.version` | VM heap at boot |
+  | Script | Repo source | Minified bytes | `meta.version` | VM heap at boot |
   | --- | --- | --- | --- | --- |
-  | `moon` | `weather/moon-panel.ax` (v2.1), minified | 10,918 | 2.1 | 21,907 |
-  | `nightkeeper` | `nightkeeper.ax`, minified | 2,685 | 3.0 | 4,081 |
-  | `nowplaying` | `now_playing.ax`, minified + PC LAN URL | 7,372 | 2.1 | 14,304 |
-  | `ocean` | `ocean.ax` (v2), as-is | 10,434 | *(no header)* | 26,169 |
+  | `moon` | `weather/moon-panel-v2.5.1.ax` | 11,940 (sha256 `8f062d92…`) | 2.5.1 | 21,062 |
+  | `nightkeeper` | `nightkeeper.ax` | 2,685 | 3.0 | 4,081 |
+  | `nowplaying` | `now_playing-v2.4.ax` + PC LAN URL | ~9,500 | 2.4 | 13,643 |
+  | `ocean` | `ocean-v3.4.2.ax` | 9,694 (sha256 `e05ed8a4…`) | 3.4.2 | 19,622 |
 
-  Every script was installed by hash from the repo on 2026-10-10;
-  `nightkeeper` and `nowplaying` read back byte-exact, and `moon` v2.1 read
-  back matching its pin in `script_swap.py --check-only`. `ocean` has not
-  been read back on this board. The previous moon, v2.0, is kept as
-  `weather/moon-panel-v2.0.ax` (minified sha256 `f6b17ba2…`) for rollback.
-
-  This `moon` is the old tracker (nebula, eclipses, glide to an info screen),
-  restored at the user's request in place of `sunset`, which has been off
-  since 2026-10-04. Root `moon.ax`, `weather/moon.ax` and every other
-  `weather/*.ax` (`wx`, `wxfeed`, `wxnow`, …) are kept but not installed (404).
-  `panel_snapshot.REPOSITORY_SOURCES` maps installed scripts to sources. Live
-  weather is the *pushed* `weatherbrief` and `aqibrief`. Pushed apps live in
+  Ocean 3.4.2 and Moon 2.5.1 were installed with `script_swap.py` on
+  2026-10-31 and read back byte-exact. Rollback sources stay in the repo:
+  Ocean 3.3 / 3.4 / 3.4.1, Moon 2.4 / 2.5. A guarded swap drops the target
+  from `/apploop.json`; run `rotation_policy.py --apply` afterwards.
+  `sunset` has been off since 2026-10-04. Live weather is the *pushed*
+  `weatherbrief`, `wxnext`, `wxalert` and `aqibrief`. Pushed apps live in
   RAM and vanish on reboot; their senders re-push within minutes. Always
   check `GET /apps`.
-- **Budget: 80,788 of 98,304 B (82%) after boot.** That is the boot log's
-  `shared` total: the four scripts' 65,972 B plus 14,816 B the VM holds
-  before any script loads. Compare `shared` with the budget, not the
-  per-script sum. Treat ~75% (73,728 B) as the ceiling. The set is already
-  over it, so anything added needs something removed. The panel panicked on
-  2026-10-04 at 14:51 with five scripts at 85%, during a companion push; the
-  root cause is not established.
+- **Budget: 73,176 of 98,304 B (74.4%) after boot** (2026-10-31). That is
+  the boot log's `shared` total: the four scripts' 58,408 B plus ~14,800 B
+  the VM holds before any script loads. Compare `shared` with the budget, not
+  the per-script sum. 75% (73,728 B) is the ceiling `script_swap.py`
+  enforces after every install — it rolls back an install that crosses it,
+  and did so for a timing build 212 B over. With 552 B to spare, anything
+  added needs something removed. The panel panicked on 2026-10-04 at 14:51
+  with five scripts at 85%; the root cause is not established.
 - **Cost is not proportional to source.** VM heap has run from 0.4× to
   2.5× the source size, because tables built in `init()` dominate. Only a
   post-reboot boot log is honest; install-time figures include compile
@@ -185,16 +180,23 @@ These facts were verified in the firmware source *and* on the panel:
 
 - Target ~40 fps. Keep `draw()` tiny and deterministic; do parsing, HTTP, and
   JSON work in `loop()` only.
-- Each native `pixel()` call costs ~50–60 µs and Berry ops are slow, so FPS
-  tracks drawing calls per frame. The firmware's own per-frame work is
-  ~14 ms, so 42 FPS needs `draw()` ≲10 ms. Profile with a temporary build
-  that sums `now_ms()` per section and `log()`s it.
-- **`ocean` is now the slow page** (28–40 FPS, 2026-10-10). `moon` v2.1
-  holds 40–42 since 2026-10-10; v2.0 averaged 25 (minimum 22, below 40 in all
-  120 on-screen samples, 2026-10-07/08). `nowplaying` ran ~36. The v2.1
-  method — a float32-faithful emulator (`weather/berry_lite.py`,
-  `weather/moon_panel_sim.py`) proving pixel identity, then caching per-phase
-  work out of `draw()` — is the template for ocean.
+- **Count calls, not pixels** (measured on the panel 2026-10-31 with timing
+  builds in `docs/profiling/`): every native draw call costs ~0.1–0.16 ms
+  whatever its length — a full-width `line()` ≈ 0.1 ms. About 18 ms of each
+  frame is outside `draw()`, so 40 FPS needs `draw()` ≲ 7–8 ms. Work batched
+  into a periodic rebuild shows up as one long frame.
+- **Profile on the panel, not in the emulator.** `weather/berry_lite.py` proves
+  pixel identity but mis-ranks speed fixes (it called Ocean 3.4.1 faster than
+  3.4; the panel said otherwise). A timing build sums `now_ms()` per stage and
+  `log()`s it every 200 frames; it must fit the 75% ceiling.
+- Only horizontal `line()` is relied on; no script uses another kind.
+- **Measured 2026-10-31:** Ocean 3.4.2 40–42 FPS (3.3: 28, minimum 18);
+  Moon 2.5.1 39–42 (2.4: 35–42); `nowplaying` ran ~36 earlier and has not
+  been profiled — a timing build of it would not fit the ceiling today.
+- Moon 2.5 skips nebula runs no channel of which reaches `VISIBLE_MIN` (20):
+  at brightness 45 a channel below 23 does not light an LED, and ~39 of ~41
+  runs never did. Raising the day brightness well above 45 is the case to
+  revisit.
 
 ## REST API (all under `http://192.168.1.90/api/v1`)
 
@@ -351,8 +353,8 @@ it needs something removed first.
 
 ## Working conventions
 
-- **Test command** (2,349 tests, ~30 s as of 2026-10-09), run from the
-  awtrix root. It collects `weather/` too:
+- **Test command** (3,859 tests, ~4 min as of 2026-10-31), run from the
+  repository root. It collects `weather/` too:
   `C:/Users/devyn/anaconda3/Scripts/pytest.exe -q -p no:cacheprovider`
   (`-p no:cacheprovider` avoids the `.pytest_cache` write that Controlled
   Folder Access blocks).
@@ -396,12 +398,24 @@ Python via Windows Security → Ransomware protection → Allow an app.
 
 ## Current release state
 
-- **Firmware is 1.1.2** (upgraded 2026-10-03 by manual `.bin` upload). It
-  adds `timer.*`, `display.power()`, `on_button_event()`, `should_show()` and
-  multi-icon pushes, and drops the `scriptLimit`/`scriptMaxBytes` caps (the
-  tests keep their own: `moon-panel.ax` and `now_playing.ax` ≤ 16,384 B raw,
-  `weather/*.ax` ≤ 12,288 B minified). The 1.1.0 → 1.1.2 comparison is in
-  `ROADMAP.md`.
+- **Firmware is 1.2.2.** It requires the `data:image/gif;base64,` prefix on
+  pushed icons (`firmware_compat.prepare_payload`). The tests keep their own
+  size caps: `weather/*.ax` ≤ 12,288 B minified, `moon-panel*.ax` and
+  `now_playing*.ax` ≤ 16,384 B raw.
+- **The host runs a DriftMatrix release** under `%LOCALAPPDATA%\AWTRIX\releases\<sha>`
+  from the `DriftMatrix Host` scheduled task (`driftmatrix.py run --config
+  %LOCALAPPDATA%\AWTRIX\driftmatrix.json`). Deploy: `git archive` the commit
+  there, `driftmatrix.py stop`, wait for the process to exit (starting early
+  exits 3), retarget the task, start it, check `driftmatrix.py status`.
+- **Weather (2026-10-31):** `weatherbrief` takes its sky and temperature from
+  the nearest fresh NWS station (KAJO, KRAL, KONT; `weather/nws.py`) and says
+  NOW only while it reports precipitation; Open-Meteo is the forecast and the
+  fallback. `wxnext` shows sunset by day, tomorrow after dark and gusts ≥ 25
+  mph; `wxalert` shows active NWS alerts. Options: `observation_stations`,
+  `outlook`, `alerts`, `alert_min_severity`.
+- **Readable pages (2026-10-31):** values name what they measure (CPU 82,
+  LOSS 30, GPU 71°, M3.4); `test_page_legibility.py` keeps the 3x3 font out
+  of live pages.
 - **Nightly maintenance is on** (`panel_maintenance.py`, `maintenance`
   section): 21:35–23:00 because the PC sleeps overnight, only with uptime
   ≥ 20 h and the matrix dark. First real run 2026-10-06 21:37: `ok`, block
@@ -415,15 +429,6 @@ Python via Windows Security → Ransomware protection → Allow an app.
   0`). Replayed over 2026-10-04..08 the policy restarts twice, the second 46
   min before the 2026-10-07 outage. Memory drains with PC-awake sender time,
   not uptime: an 18 h PC sleep left the block unchanged.
-- **Moon v2.1 is installed** (2026-10-10, on the replacement board):
-  `weather/moon-panel.ax`, minified sha256 `90cd90e0…`. First hardware run:
-  readback match, screen match against the emulator, 40–42 FPS (v2.0: ~25).
-  Its boot VM heap is 21,907 B — 745 B *more* than v2.0, not the 1.0–1.5 KB
-  saving the emulation estimated. Health check (read-only):
-  `python script_swap.py moon weather/moon-panel.ax --expect-version 2.1
-  --rollback weather/moon-panel-v2.0.ax --rollback-version 2.0 --expect-sha256
-  90cd90e057a969d3 --rollback-sha256 f6b17ba2500719b0 --check-only`; drop
-  `--check-only` and add `--rollback-now` to go back to v2.0.
 - **PC stats writes on change** (2026-10-09): refresh on a 3-point move or
   level change, 25 s keep-alive, 60 s page lifetime, 30 s minimum display
   showing the spike value, 5→60 s backoff for lost and refused writes.
@@ -433,9 +438,10 @@ Python via Windows Security → Ransomware protection → Allow an app.
   fallback and restores on the next tick after an observed reboot.
   Maintenance verifies the reset reason, complete readbacks and the return of
   pre-reboot scripts. See `STABILITY_STATUS.md` for evidence and limits.
-- **All future plans and release gates were scrapped on 2026-09-26**: no
-  pending soak, calendar source, gamma work or redesign. Don't resume any of
-  it unless asked.
+- **Overhaul 2026-10-31** (requested by the user): observed weather, outlook and
+  alert pages, notification mirror on, readable labels, Ocean 3.4.2, Moon
+  2.5.1. Next Up stays off (no calendar feed); the mirror shows nothing until
+  Windows notifications are turned back on (`ToastEnabled = 0`).
 - Git metadata lives under `%LOCALAPPDATA%\AWTRIX\git\awtrix.git`; use
   `awtrix-git.ps1`. `git commit` through it works from an ordinary shell:
   only the git directory under `%LOCALAPPDATA%` is written.

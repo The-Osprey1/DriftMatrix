@@ -50,16 +50,11 @@ LIFETIME_MS = 45_000
 
 # Canonical high-energy source colours selected for gamma 2.2.  The panel does
 # the gamma conversion; these are intentionally not pre-darkened desktop RGB.
-BLACK: RGB = (0, 0, 0)
-PEARL: RGB = (255, 247, 232)
-ICE: RGB = (222, 235, 250)
+# The panel-wide tokens come from visual_system (2026-10-31); this page used
+# to keep its own copies, which had drifted (ICE, MINT, AMBER, CORAL, VIOLET).
+from visual_system import AMBER, BLACK, CORAL, GOLD, ICE, MINT, PEARL, VIOLET  # noqa: E402
 SLATE: RGB = (174, 190, 214)
 SKY: RGB = (88, 205, 255)
-GOLD: RGB = (255, 214, 78)
-AMBER: RGB = (255, 158, 58)
-CORAL: RGB = (255, 82, 104)
-VIOLET: RGB = (204, 116, 255)
-MINT: RGB = (82, 240, 168)
 TRACK_COOL: RGB = (90, 106, 142)
 TRACK_WARM: RGB = (112, 78, 96)
 
