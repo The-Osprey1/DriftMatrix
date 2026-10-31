@@ -1,0 +1,424 @@
+{
+  "baseline_source_head": "36be7949a15b19b0a3fd8957e740310ddb2a2d55",
+  "focus_source_sha256": "4e349db3dc8c5b0a738ef771d79dbd176b1c2956e651c4bbdafcf77b81a5bc6a",
+  "focus_source_lf_sha256": "6818b45cf2f24477263fa203dc4c5bba81cb00ce6ad65d8f9235c5c5e8343de2",
+  "scope": "Synthetic inputs and actual prepared 1.2.2 payloads frozen before the timing edit. No device or private calendar/media data. Source hash is Windows CRLF; LF hash is also supplied.",
+  "cases": [
+    {
+      "state": "focus_running",
+      "animated": false,
+      "remaining": 731,
+      "total": 1500,
+      "cycle": 1,
+      "payload": {
+        "icon": "data:image/gif;base64,R0lGODdhCAAIAIIAAP/SyIL/ljzcbv9GRsgoMgAAAAAAAAAAACwAAAAACAAIAAAIIwALCBQgQKBBAQECFBQ4oKHDAg4jNgQgseJDiQQMEtiYsUBAADs=",
+        "iconMode": "fixed",
+        "iconOffsetX": 0,
+        "draw": [
+          [
+            "bitmap",
+            9,
+            0,
+            23,
+            8,
+            "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA//foAAAAAAAA//fo//foAAAAAAAAAAAAAAAAAAAA//foAAAAAAAAAAAA//foAAAAAAAAAAAAAAAAAAAAAAAAAAAA//fo//foAAAAAAAAAAAAAAAA//foAAAA//foAAAA//fo//foAAAAAAAA//fo//foAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA//foAAAAAAAAAAAA//foAAAAAAAAAAAAAAAAAAAA//foAAAAAAAAAAAA//foAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA//foAAAAAAAA//foAAAAAAAAAAAA//foAAAAAAAA//foAAAAAAAAAAAA//foAAAAAAAAAAAAAAAAAAAAAAAAAAAA//fo//fo//foAAAA//fo//fo//foAAAAAAAAAAAA//fo//fo//foAAAA//fo//fo//foAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAaH+HdY+ZgZ2oi6q2lbbCnsHOp8vZrtXjtt7tvef2xO////foHyYpHyYpHyYpHyYpHyYpHyYpHyYpHyYpHyYpHyYpHyYp"
+          ]
+        ],
+        "backgroundColor": "#000000",
+        "durationMs": 8000,
+        "lifetimeMs": 20000,
+        "lifetimeExpiry": "remove"
+      }
+    },
+    {
+      "state": "focus_running",
+      "animated": true,
+      "remaining": 731,
+      "total": 1500,
+      "cycle": 1,
+      "payload": {
+        "icon": "data:image/gif;base64,R0lGODlhCAAIAIIAAP/36IL/lv/SyP+5rzzcbv9GRsgoMgAAACH/C05FVFNDQVBFMi4wAwEAAAAh+QQEGAAAACwAAAAACAAIAAAIJwAPCCRAQKBBAgECFBRYoKHDAw4HAHBYQADFixchUjRg0IBHjgcCAgAh+QQFGAAIACwDAAMAAwABAIL/9+iC/5b/0sj/ua883G7/RkbIKDIAAAAIBgALDAAQEAAh+QQFGAAIACwEAAMAAgACAIL/9+iC/5b/0sj/ua883G7/RkbIKDIAAAAIBwALDEAAICAAIfkEBRgACAAsBQADAAEAAwCC//fogv+W/9LI/7mvPNxu/0ZGyCgyAAAACAYACwwAEBAAIfkEBRgACAAsBAAEAAIAAgCC//fogv+W/9LI/7mvPNxu/0ZGyCgyAAAACAcAERQAMCAgACH5BAUYAAgALAMABQADAAEAgv/36IL/lv/SyP+5rzzcbv9GRsgoMgAAAAgGAAEMKBAQACH5BAUYAAgALAMABAACAAIAgv/36IL/lv/SyP+5rzzcbv9GRsgoMgAAAAgHAAEgGFAgIAAh+QQFGAAIACwDAAMAAQADAIL/9+iC/5b/0sj/ua883G7/RkbIKDIAAAAIBgABDCgQEAA7",
+        "iconMode": "fixed",
+        "iconOffsetX": 0,
+        "draw": [
+          [
+            "bitmap",
+            9,
+            0,
+            23,
+            8,
+            "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA//foAAAAAAAA//fo//foAAAAAAAAAAAAAAAAAAAA//foAAAAAAAAAAAA//foAAAAAAAAAAAAAAAAAAAAAAAAAAAA//fo//foAAAAAAAAAAAAAAAA//foAAAA//foAAAA//fo//foAAAAAAAA//fo//foAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA//foAAAAAAAAAAAA//foAAAAAAAAAAAAAAAAAAAA//foAAAAAAAAAAAA//foAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA//foAAAAAAAA//foAAAAAAAAAAAA//foAAAAAAAA//foAAAAAAAAAAAA//foAAAAAAAAAAAAAAAAAAAAAAAAAAAA//fo//fo//foAAAA//fo//fo//foAAAAAAAAAAAA//fo//fo//foAAAA//fo//fo//foAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAaH+HdY+ZgZ2oi6q2lbbCnsHOp8vZrtXjtt7tvef2xO////foHyYpHyYpHyYpHyYpHyYpHyYpHyYpHyYpHyYpHyYpHyYp"
+          ]
+        ],
+        "backgroundColor": "#000000",
+        "durationMs": 8000,
+        "lifetimeMs": 20000,
+        "lifetimeExpiry": "remove"
+      }
+    },
+    {
+      "state": "focus_paused",
+      "animated": false,
+      "remaining": 731,
+      "total": 1500,
+      "cycle": 1,
+      "payload": {
+        "icon": "data:image/gif;base64,R0lGODdhCAAIAIIAAP/SyP/cWIL/ljzcbv9GRsgoMgAAAAAAACwAAAAACAAIAAAIKQANCBwwQKDBAQIEFBRIoKFDAw4DEJDYEMDEiw4vUoSYsYDBAiA9GggIADs=",
+        "iconMode": "fixed",
+        "iconOffsetX": 0,
+        "draw": [
+          [
+            "bitmap",
+            9,
+            0,
+            23,
+            8,
+            "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA//foAAAAAAAA//fo//foAAAAAAAAAAAAAAAAAAAA//foAAAAAAAAAAAA//foAAAAAAAAAAAAAAAAAAAAAAAAAAAA//fo//foAAAAAAAAAAAAAAAA//foAAAA//foAAAA//fo//foAAAAAAAA//fo//foAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA//foAAAAAAAAAAAA//foAAAAAAAAAAAAAAAAAAAA//foAAAAAAAAAAAA//foAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA//foAAAAAAAA//foAAAAAAAAAAAA//foAAAAAAAA//foAAAAAAAAAAAA//foAAAAAAAAAAAAAAAAAAAAAAAAAAAA//fo//fo//foAAAA//fo//fo//foAAAAAAAAAAAA//fo//fo//foAAAA//fo//fo//foAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAh3EpmYAvqIwztpg3wqI7zqw/2bVC475F7cZI9s5L/9VO//foKSIMKSIMKSIMKSIMKSIMKSIMKSIMKSIMKSIMKSIMKSIM"
+          ]
+        ],
+        "backgroundColor": "#000000",
+        "durationMs": 8000,
+        "lifetimeMs": 20000,
+        "lifetimeExpiry": "remove"
+      }
+    },
+    {
+      "state": "focus_paused",
+      "animated": true,
+      "remaining": 731,
+      "total": 1500,
+      "cycle": 1,
+      "payload": {
+        "icon": "data:image/gif;base64,R0lGODdhCAAIAIIAAP/SyP/cWIL/ljzcbv9GRsgoMgAAAAAAACwAAAAACAAIAAAIKQANCBwwQKDBAQIEFBRIoKFDAw4DEJDYEMDEiw4vUoSYsYDBAiA9GggIADs=",
+        "iconMode": "fixed",
+        "iconOffsetX": 0,
+        "draw": [
+          [
+            "bitmap",
+            9,
+            0,
+            23,
+            8,
+            "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA//foAAAAAAAA//fo//foAAAAAAAAAAAAAAAAAAAA//foAAAAAAAAAAAA//foAAAAAAAAAAAAAAAAAAAAAAAAAAAA//fo//foAAAAAAAAAAAAAAAA//foAAAA//foAAAA//fo//foAAAAAAAA//fo//foAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA//foAAAAAAAAAAAA//foAAAAAAAAAAAAAAAAAAAA//foAAAAAAAAAAAA//foAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA//foAAAAAAAA//foAAAAAAAAAAAA//foAAAAAAAA//foAAAAAAAAAAAA//foAAAAAAAAAAAAAAAAAAAAAAAAAAAA//fo//fo//foAAAA//fo//fo//foAAAAAAAAAAAA//fo//fo//foAAAA//fo//fo//foAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAh3EpmYAvqIwztpg3wqI7zqw/2bVC475F7cZI9s5L/9VO//foKSIMKSIMKSIMKSIMKSIMKSIMKSIMKSIMKSIMKSIMKSIM"
+          ]
+        ],
+        "backgroundColor": "#000000",
+        "durationMs": 8000,
+        "lifetimeMs": 20000,
+        "lifetimeExpiry": "remove"
+      }
+    },
+    {
+      "state": "focus_done_cue",
+      "animated": false,
+      "remaining": 731,
+      "total": 1500,
+      "cycle": 1,
+      "payload": {
+        "icon": "data:image/gif;base64,R0lGODdhCAAIAIEAAFL/sAAAAAAAAAAAACwAAAAACAAIAAAIGQADCBxIsKDBgwIBJFQYAADDhg4fLkQ4MCAAOw==",
+        "iconMode": "fixed",
+        "iconOffsetX": 0,
+        "draw": [
+          [
+            "bitmap",
+            9,
+            0,
+            23,
+            8,
+            "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA//fo//fo//foAAAA//fo//fo//foAAAAAAAAAAAA//fo//fo//foAAAA//fo//fo//foAAAAAAAAAAAAAAAAAAAAAAAA//foAAAA//foAAAA//foAAAA//foAAAA//foAAAA//foAAAA//foAAAA//foAAAA//foAAAAAAAAAAAAAAAAAAAAAAAA//foAAAA//foAAAA//foAAAA//foAAAAAAAAAAAA//foAAAA//foAAAA//foAAAA//foAAAAAAAAAAAAAAAAAAAAAAAA//foAAAA//foAAAA//foAAAA//foAAAA//foAAAA//foAAAA//foAAAA//foAAAA//foAAAAAAAAAAAAAAAAAAAAAAAA//fo//fo//foAAAA//fo//fo//foAAAAAAAAAAAA//fo//fo//foAAAA//fo//fo//foAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA//foHyYpHyYpHyYpHyYpHyYpHyYpHyYpHyYpHyYpHyYpHyYpHyYpHyYpHyYpHyYpHyYpHyYpHyYpHyYpHyYpHyYpHyYp"
+          ]
+        ],
+        "backgroundColor": "#000000",
+        "durationMs": 8000,
+        "lifetimeMs": 20000,
+        "lifetimeExpiry": "remove"
+      }
+    },
+    {
+      "state": "focus_done_cue",
+      "animated": true,
+      "remaining": 731,
+      "total": 1500,
+      "cycle": 1,
+      "payload": {
+        "icon": "data:image/gif;base64,R0lGODlhCAAIAIEAAFL/sAAAAAAAAAAAACH5BAQSAAAALAAAAAAIAAgAAAgZAAMIHEiwoMGDAgEkVBgAAMOGDh8uRDgwIAAh+QQFEgADACwBAAIABgABAIH/9+hS/7AAAAAAAAAICAABDBggEEBAACH5BAUSAAMALAAAAQAIAAIAgf/36FL/sAAAAAAAAAgPAAcIHABgIAABAhEKABAQACH5BAUSAAMALAAAAAAIAAMAgf/36FL/sAAAAAAAAAgQAAcIHABgoEEBAxEaHCAgIAAh+QQFEgACACwEAAAAAQABAIFS/7AAAAAAAAAAAAAIBAADBAQAOw==",
+        "iconMode": "fixed",
+        "iconOffsetX": 0,
+        "draw": [
+          [
+            "bitmap",
+            9,
+            0,
+            23,
+            8,
+            "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA//fo//fo//foAAAA//fo//fo//foAAAAAAAAAAAA//fo//fo//foAAAA//fo//fo//foAAAAAAAAAAAAAAAAAAAAAAAA//foAAAA//foAAAA//foAAAA//foAAAA//foAAAA//foAAAA//foAAAA//foAAAA//foAAAAAAAAAAAAAAAAAAAAAAAA//foAAAA//foAAAA//foAAAA//foAAAAAAAAAAAA//foAAAA//foAAAA//foAAAA//foAAAAAAAAAAAAAAAAAAAAAAAA//foAAAA//foAAAA//foAAAA//foAAAA//foAAAA//foAAAA//foAAAA//foAAAA//foAAAAAAAAAAAAAAAAAAAAAAAA//fo//fo//foAAAA//fo//fo//foAAAAAAAAAAAA//fo//fo//foAAAA//fo//fo//foAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA//foHyYpHyYpHyYpHyYpHyYpHyYpHyYpHyYpHyYpHyYpHyYpHyYpHyYpHyYpHyYpHyYpHyYpHyYpHyYpHyYpHyYpHyYp"
+          ]
+        ],
+        "backgroundColor": "#000000",
+        "durationMs": 8000,
+        "lifetimeMs": 20000,
+        "lifetimeExpiry": "remove"
+      }
+    },
+    {
+      "state": "short_break_running",
+      "animated": false,
+      "remaining": 300,
+      "total": 300,
+      "cycle": 1,
+      "payload": {
+        "icon": "data:image/gif;base64,R0lGODdhCAAIAIIAAP/WjKrN5v+WLdx4JJZQHgAAAAAAAAAAACwAAAAACAAIAAAIKQALCAwgsGCBAAQNHlRYAIBDhwUFEJgoYMCAAgIiFriYUWDFixZDCgwIADs=",
+        "iconMode": "fixed",
+        "iconOffsetX": 0,
+        "draw": [
+          [
+            "bitmap",
+            9,
+            0,
+            23,
+            8,
+            "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA//fo//fo//foAAAA//fo//fo//foAAAAAAAAAAAA//fo//fo//foAAAA//fo//fo//foAAAAAAAAAAAAAAAAAAAAAAAA//foAAAA//foAAAA//foAAAAAAAAAAAA//foAAAA//foAAAA//foAAAA//foAAAA//foAAAAAAAAAAAAAAAAAAAAAAAA//foAAAA//foAAAA//fo//foAAAAAAAAAAAAAAAA//foAAAA//foAAAA//foAAAA//foAAAAAAAAAAAAAAAAAAAAAAAA//foAAAA//foAAAAAAAAAAAA//foAAAA//foAAAA//foAAAA//foAAAA//foAAAA//foAAAAAAAAAAAAAAAAAAAAAAAA//fo//fo//foAAAA//fo//foAAAAAAAAAAAAAAAA//fo//fo//foAAAA//fo//fo//foAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAI3hPJoJVKIpaK5JgLZplL6FpMahuM65yNbR2N7p6OMB+OsaBPMuFPdCIP9WLQNqOQd+SQ+OVROiYReyaR/GdSPWg//fo"
+          ]
+        ],
+        "backgroundColor": "#000000",
+        "durationMs": 8000,
+        "lifetimeMs": 20000,
+        "lifetimeExpiry": "remove"
+      }
+    },
+    {
+      "state": "short_break_running",
+      "animated": true,
+      "remaining": 300,
+      "total": 300,
+      "cycle": 1,
+      "payload": {
+        "icon": "data:image/gif;base64,R0lGODlhCAAIAIIAAP/WjOz2/6rN5v+WLdx4JJZQHgAAAAAAACH/C05FVFNDQVBFMi4wAwEAAAAh+QQEHgAAACwAAAAACAAIAAAIKgANCBQgsKABAQQNGgig0ACAhw8LDihAcQABAgYGSDSAUaNAixgvihQYEAAh+QQFHgAHACwCAAEAAQACAIL/1ozs9v+qzeb/li3ceCSWUB4AAAAAAAAIBQADCAgIACH5BAUeAAcALAIAAQACAAEAgv/WjOz2/6rN5v+WLdx4JJZQHgAAAAAAAAgFAAUECAgAIfkEBR4ABwAsAwAAAAEAAgCC/9aM7Pb/qs3m/5Yt3HgkllAeAAAAAAAACAUAAwgICAAh+QQFHgAHACwDAAAAAQACAIL/1ozs9v+qzeb/li3ceCSWUB4AAAAAAAAIBQAFBAgIACH5BAUeAAcALAIAAQACAAEAgv/WjOz2/6rN5v+WLdx4JJZQHgAAAAAAAAgFAAMICAgAOw==",
+        "iconMode": "fixed",
+        "iconOffsetX": 0,
+        "draw": [
+          [
+            "bitmap",
+            9,
+            0,
+            23,
+            8,
+            "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA//fo//fo//foAAAA//fo//fo//foAAAAAAAAAAAA//fo//fo//foAAAA//fo//fo//foAAAAAAAAAAAAAAAAAAAAAAAA//foAAAA//foAAAA//foAAAAAAAAAAAA//foAAAA//foAAAA//foAAAA//foAAAA//foAAAAAAAAAAAAAAAAAAAAAAAA//foAAAA//foAAAA//fo//foAAAAAAAAAAAAAAAA//foAAAA//foAAAA//foAAAA//foAAAAAAAAAAAAAAAAAAAAAAAA//foAAAA//foAAAAAAAAAAAA//foAAAA//foAAAA//foAAAA//foAAAA//foAAAA//foAAAAAAAAAAAAAAAAAAAAAAAA//fo//fo//foAAAA//fo//foAAAAAAAAAAAAAAAA//fo//fo//foAAAA//fo//fo//foAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAI3hPJoJVKIpaK5JgLZplL6FpMahuM65yNbR2N7p6OMB+OsaBPMuFPdCIP9WLQNqOQd+SQ+OVROiYReyaR/GdSPWg//fo"
+          ]
+        ],
+        "backgroundColor": "#000000",
+        "durationMs": 8000,
+        "lifetimeMs": 20000,
+        "lifetimeExpiry": "remove"
+      }
+    },
+    {
+      "state": "long_break_running",
+      "animated": false,
+      "remaining": 731,
+      "total": 900,
+      "cycle": 1,
+      "payload": {
+        "icon": "data:image/gif;base64,R0lGODdhCAAIAIIAAP/WjKrN5v+WLdx4JJZQHgAAAAAAAAAAACwAAAAACAAIAAAIKgALCAwwUGCBAAQRGiR40CCAhw8NCiBAUcCAAQUESCyAUaNAixgvihQYEAA7",
+        "iconMode": "fixed",
+        "iconOffsetX": 0,
+        "draw": [
+          [
+            "bitmap",
+            9,
+            0,
+            23,
+            8,
+            "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA//foAAAAAAAA//fo//foAAAAAAAAAAAAAAAAAAAA//foAAAAAAAAAAAA//foAAAAAAAAAAAAAAAAAAAAAAAAAAAA//fo//foAAAAAAAAAAAAAAAA//foAAAA//foAAAA//fo//foAAAAAAAA//fo//foAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA//foAAAAAAAAAAAA//foAAAAAAAAAAAAAAAAAAAA//foAAAAAAAAAAAA//foAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA//foAAAAAAAA//foAAAAAAAAAAAA//foAAAAAAAA//foAAAAAAAAAAAA//foAAAAAAAAAAAAAAAAAAAAAAAAAAAA//fo//fo//foAAAA//fo//fo//foAAAAAAAAAAAA//fo//fo//foAAAA//fo//fo//foAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAJHtQJ4ZXKpBeLZlkL6JqMqpvNLJ0Nrl5OMB+OseCPM2GPtSKQNqOQt+SQ+WWReqZRvCdSPWg//foDCcaDCcaDCcaDCca"
+          ]
+        ],
+        "backgroundColor": "#000000",
+        "durationMs": 8000,
+        "lifetimeMs": 20000,
+        "lifetimeExpiry": "remove"
+      }
+    },
+    {
+      "state": "long_break_running",
+      "animated": true,
+      "remaining": 731,
+      "total": 900,
+      "cycle": 1,
+      "payload": {
+        "icon": "data:image/gif;base64,R0lGODlhCAAIAIIAAOz2///WjKrN5v+WLdx4JJZQHgAAAAAAACH/C05FVFNDQVBFMi4wAwEAAAAh+QQEHgAAACwAAAAACAAIAAAIKwANCBQgEIBAAwIIJjxoEOHBABAhHhxQoOIAAgQMDJhoIONGgRczYhwpMCAAIfkEBR4ABwAsAgAAAAUAAwCC7Pb//9aMqs3m/5Yt3HgkllAeAAAAAAAACA4ADwg8IADAQAACBh4ICAAh+QQFHgAHACwCAAEABQABAILs9v//1oyqzeb/li3ceCSWUB4AAAAAAAAICAAFADgAQEBAACH5BAUeAAcALAMAAAADAAMAguz2///WjKrN5v+WLdx4JJZQHgAAAAAAAAgLAAEcOCCA4EAAAQEAIfkEBR4ABwAsAwAAAAMAAwCC7Pb//9aMqs3m/5Yt3HgkllAeAAAAAAAACAsABRw4AIDgQAEBAQAh+QQFHgAHACwCAAEABQABAILs9v//1oyqzeb/li3ceCSWUB4AAAAAAAAICAABCDggAEBAADs=",
+        "iconMode": "fixed",
+        "iconOffsetX": 0,
+        "draw": [
+          [
+            "bitmap",
+            9,
+            0,
+            23,
+            8,
+            "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA//foAAAAAAAA//fo//foAAAAAAAAAAAAAAAAAAAA//foAAAAAAAAAAAA//foAAAAAAAAAAAAAAAAAAAAAAAAAAAA//fo//foAAAAAAAAAAAAAAAA//foAAAA//foAAAA//fo//foAAAAAAAA//fo//foAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA//foAAAAAAAAAAAA//foAAAAAAAAAAAAAAAAAAAA//foAAAAAAAAAAAA//foAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA//foAAAAAAAA//foAAAAAAAAAAAA//foAAAAAAAA//foAAAAAAAAAAAA//foAAAAAAAAAAAAAAAAAAAAAAAAAAAA//fo//fo//foAAAA//fo//fo//foAAAAAAAAAAAA//fo//fo//foAAAA//fo//fo//foAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAJHtQJ4ZXKpBeLZlkL6JqMqpvNLJ0Nrl5OMB+OseCPM2GPtSKQNqOQt+SQ+WWReqZRvCdSPWg//foDCcaDCcaDCcaDCca"
+          ]
+        ],
+        "backgroundColor": "#000000",
+        "durationMs": 8000,
+        "lifetimeMs": 20000,
+        "lifetimeExpiry": "remove"
+      }
+    },
+    {
+      "state": "break_paused",
+      "animated": false,
+      "remaining": 300,
+      "total": 300,
+      "cycle": 1,
+      "payload": {
+        "icon": "data:image/gif;base64,R0lGODdhCAAIAIIAAP/36P/WjKrN5v+WLdx4JJZQHgAAAAAAACwAAAAACAAIAAAIKwANCBQgsKABAQQNHlRoIIBDhwUHACgAYAABAgYkGqhoAKPGihc7XgxpICAAOw==",
+        "iconMode": "fixed",
+        "iconOffsetX": 0,
+        "draw": [
+          [
+            "bitmap",
+            9,
+            0,
+            23,
+            8,
+            "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA//fo//fo//foAAAA//fo//fo//foAAAAAAAAAAAA//fo//fo//foAAAA//fo//fo//foAAAAAAAAAAAAAAAAAAAAAAAA//foAAAA//foAAAA//foAAAAAAAAAAAA//foAAAA//foAAAA//foAAAA//foAAAA//foAAAAAAAAAAAAAAAAAAAAAAAA//foAAAA//foAAAA//fo//foAAAAAAAAAAAAAAAA//foAAAA//foAAAA//foAAAA//foAAAAAAAAAAAAAAAAAAAAAAAA//foAAAA//foAAAAAAAAAAAA//foAAAA//foAAAA//foAAAA//foAAAA//foAAAA//foAAAAAAAAAAAAAAAAAAAAAAAA//fo//fo//foAAAA//fo//foAAAAAAAAAAAAAAAA//fo//fo//foAAAA//fo//fo//foAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAfmkmh3EpkHksmYAvoYYxqIwzr5I1tpg3vJ05wqI7yKc9zqw/07FB2bVC3rlE475F6MJH7cZI8spK9s5L+9FN/9VO//fo"
+          ]
+        ],
+        "backgroundColor": "#000000",
+        "durationMs": 8000,
+        "lifetimeMs": 20000,
+        "lifetimeExpiry": "remove"
+      }
+    },
+    {
+      "state": "break_paused",
+      "animated": true,
+      "remaining": 300,
+      "total": 300,
+      "cycle": 1,
+      "payload": {
+        "icon": "data:image/gif;base64,R0lGODdhCAAIAIIAAP/36P/WjKrN5v+WLdx4JJZQHgAAAAAAACwAAAAACAAIAAAIKwANCBQgsKABAQQNHlRoIIBDhwUHACgAYAABAgYkGqhoAKPGihc7XgxpICAAOw==",
+        "iconMode": "fixed",
+        "iconOffsetX": 0,
+        "draw": [
+          [
+            "bitmap",
+            9,
+            0,
+            23,
+            8,
+            "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA//fo//fo//foAAAA//fo//fo//foAAAAAAAAAAAA//fo//fo//foAAAA//fo//fo//foAAAAAAAAAAAAAAAAAAAAAAAA//foAAAA//foAAAA//foAAAAAAAAAAAA//foAAAA//foAAAA//foAAAA//foAAAA//foAAAAAAAAAAAAAAAAAAAAAAAA//foAAAA//foAAAA//fo//foAAAAAAAAAAAAAAAA//foAAAA//foAAAA//foAAAA//foAAAAAAAAAAAAAAAAAAAAAAAA//foAAAA//foAAAAAAAAAAAA//foAAAA//foAAAA//foAAAA//foAAAA//foAAAA//foAAAAAAAAAAAAAAAAAAAAAAAA//fo//fo//foAAAA//fo//foAAAAAAAAAAAAAAAA//fo//fo//foAAAA//fo//fo//foAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAfmkmh3EpkHksmYAvoYYxqIwzr5I1tpg3vJ05wqI7yKc9zqw/07FB2bVC3rlE475F6MJH7cZI8spK9s5L+9FN/9VO//fo"
+          ]
+        ],
+        "backgroundColor": "#000000",
+        "durationMs": 8000,
+        "lifetimeMs": 20000,
+        "lifetimeExpiry": "remove"
+      }
+    },
+    {
+      "state": "ready_next",
+      "animated": false,
+      "remaining": 731,
+      "total": 1500,
+      "cycle": 1,
+      "payload": {
+        "icon": "data:image/gif;base64,R0lGODdhCAAIAIEAAP/36FL/sAAAAAAAACwAAAAACAAIAAAIGgAFCBxIUGCAggYPCgjAsCGAggwRKkRIkWBAADs=",
+        "iconMode": "fixed",
+        "iconOffsetX": 0,
+        "draw": [
+          [
+            "bitmap",
+            9,
+            0,
+            23,
+            8,
+            "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA//fo//foAAAAAAAA//fo//fo//foAAAAAAAA//foAAAAAAAA//fo//foAAAAAAAA//foAAAA//foAAAAAAAAAAAAAAAA//foAAAA//foAAAA//foAAAAAAAAAAAA//foAAAA//foAAAA//foAAAA//foAAAA//foAAAA//foAAAAAAAAAAAAAAAA//fo//foAAAAAAAA//fo//foAAAAAAAA//fo//fo//foAAAA//foAAAA//foAAAAAAAA//foAAAAAAAAAAAAAAAAAAAA//foAAAA//foAAAA//foAAAAAAAAAAAA//foAAAA//foAAAA//foAAAA//foAAAAAAAA//foAAAAAAAAAAAAAAAAAAAA//foAAAA//foAAAA//fo//fo//foAAAA//foAAAA//foAAAA//fo//foAAAAAAAAAAAA//foAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHyYpHyYpHyYpHyYpHyYpHyYpHyYpHyYpHyYpHyYpHyYpHyYpHyYpHyYpHyYpHyYpHyYpHyYpHyYpHyYpHyYpHyYpHyYp"
+          ]
+        ],
+        "backgroundColor": "#000000",
+        "durationMs": 8000,
+        "lifetimeMs": 20000,
+        "lifetimeExpiry": "remove"
+      }
+    },
+    {
+      "state": "ready_next",
+      "animated": true,
+      "remaining": 731,
+      "total": 1500,
+      "cycle": 1,
+      "payload": {
+        "icon": "data:image/gif;base64,R0lGODdhCAAIAIEAAP/36FL/sAAAAAAAACwAAAAACAAIAAAIGgAFCBxIUGCAggYPCgjAsCGAggwRKkRIkWBAADs=",
+        "iconMode": "fixed",
+        "iconOffsetX": 0,
+        "draw": [
+          [
+            "bitmap",
+            9,
+            0,
+            23,
+            8,
+            "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA//fo//foAAAAAAAA//fo//fo//foAAAAAAAA//foAAAAAAAA//fo//foAAAAAAAA//foAAAA//foAAAAAAAAAAAAAAAA//foAAAA//foAAAA//foAAAAAAAAAAAA//foAAAA//foAAAA//foAAAA//foAAAA//foAAAA//foAAAAAAAAAAAAAAAA//fo//foAAAAAAAA//fo//foAAAAAAAA//fo//fo//foAAAA//foAAAA//foAAAAAAAA//foAAAAAAAAAAAAAAAAAAAA//foAAAA//foAAAA//foAAAAAAAAAAAA//foAAAA//foAAAA//foAAAA//foAAAAAAAA//foAAAAAAAAAAAAAAAAAAAA//foAAAA//foAAAA//fo//fo//foAAAA//foAAAA//foAAAA//fo//foAAAAAAAAAAAA//foAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHyYpHyYpHyYpHyYpHyYpHyYpHyYpHyYpHyYpHyYpHyYpHyYpHyYpHyYpHyYpHyYpHyYpHyYpHyYpHyYpHyYpHyYpHyYp"
+          ]
+        ],
+        "backgroundColor": "#000000",
+        "durationMs": 8000,
+        "lifetimeMs": 20000,
+        "lifetimeExpiry": "remove"
+      }
+    },
+    {
+      "state": "break_paused",
+      "animated": false,
+      "remaining": 731,
+      "total": 900,
+      "cycle": 4,
+      "payload": {
+        "icon": "data:image/gif;base64,R0lGODdhCAAIAIIAAP/36P/WjKrN5v+WLdx4JJZQHgAAAAAAACwAAAAACAAIAAAILAANCBQwUKABAQQRGiR40GCAhw8NDgBQAMAAAgQMTDRg0UDGjRYxesQo0kBAADs=",
+        "iconMode": "fixed",
+        "iconOffsetX": 0,
+        "draw": [
+          [
+            "bitmap",
+            9,
+            0,
+            23,
+            8,
+            "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA//foAAAAAAAA//fo//foAAAAAAAAAAAAAAAAAAAA//foAAAAAAAAAAAA//foAAAAAAAAAAAAAAAAAAAAAAAAAAAA//fo//foAAAAAAAAAAAAAAAA//foAAAA//foAAAA//fo//foAAAAAAAA//fo//foAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA//foAAAAAAAAAAAA//foAAAAAAAAAAAAAAAAAAAA//foAAAAAAAAAAAA//foAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA//foAAAAAAAA//foAAAAAAAAAAAA//foAAAAAAAA//foAAAAAAAAAAAA//foAAAAAAAAAAAAAAAAAAAAAAAAAAAA//fo//fo//foAAAA//fo//fo//foAAAAAAAAAAAA//fo//fo//foAAAA//fo//fo//foAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAgGsnjHQrln0uoIUxqY00sZQ2uZs5waE7yKc9z60/1rNB3LhD4r1F6cJH7sdJ9MxL+tBM/9VO//foKSIMKSIMKSIMKSIM"
+          ]
+        ],
+        "backgroundColor": "#000000",
+        "durationMs": 8000,
+        "lifetimeMs": 20000,
+        "lifetimeExpiry": "remove"
+      }
+    },
+    {
+      "state": "break_paused",
+      "animated": true,
+      "remaining": 731,
+      "total": 900,
+      "cycle": 4,
+      "payload": {
+        "icon": "data:image/gif;base64,R0lGODdhCAAIAIIAAP/36P/WjKrN5v+WLdx4JJZQHgAAAAAAACwAAAAACAAIAAAILAANCBQwUKABAQQRGiR40GCAhw8NDgBQAMAAAgQMTDRg0UDGjRYxesQo0kBAADs=",
+        "iconMode": "fixed",
+        "iconOffsetX": 0,
+        "draw": [
+          [
+            "bitmap",
+            9,
+            0,
+            23,
+            8,
+            "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA//foAAAAAAAA//fo//foAAAAAAAAAAAAAAAAAAAA//foAAAAAAAAAAAA//foAAAAAAAAAAAAAAAAAAAAAAAAAAAA//fo//foAAAAAAAAAAAAAAAA//foAAAA//foAAAA//fo//foAAAAAAAA//fo//foAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA//foAAAAAAAAAAAA//foAAAAAAAAAAAAAAAAAAAA//foAAAAAAAAAAAA//foAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA//foAAAAAAAA//foAAAAAAAAAAAA//foAAAAAAAA//foAAAAAAAAAAAA//foAAAAAAAAAAAAAAAAAAAAAAAAAAAA//fo//fo//foAAAA//fo//fo//foAAAAAAAAAAAA//fo//fo//foAAAA//fo//fo//foAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAgGsnjHQrln0uoIUxqY00sZQ2uZs5waE7yKc9z60/1rNB3LhD4r1F6cJH7sdJ9MxL+tBM/9VO//foKSIMKSIMKSIMKSIM"
+          ]
+        ],
+        "backgroundColor": "#000000",
+        "durationMs": 8000,
+        "lifetimeMs": 20000,
+        "lifetimeExpiry": "remove"
+      }
+    }
+  ]
+}
