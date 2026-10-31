@@ -230,3 +230,17 @@ unchanged. See `AQI_READABILITY.md` for actual-payload comparisons, the original
 breath cadence and low-light/static views. The restored design must be reviewed
 before guarded host adoption, including the requested AQI animation; physical
 appearance remains separate. This follow-up makes no live changes.
+
+
+## Weather condition routing and animation restoration
+
+Exact documented-code routing preserves current/forecast semantics and stops
+unassigned codes from inventing precipitation. Following the user's rejection of
+the new symbols and preference for the old animations, weather artwork is restored
+from the original pre-revamp source, including cloud colours, moving highlights
+and the original five-stream rain cycle. Freezing precipitation shares the familiar
+rain animation; unknown conditions keep the valid temperature with a blank icon.
+Historical frame hashes and timing protect the restoration. See
+`WEATHER_CONDITIONS.md` for actual-payload previews and verification. The user approved the restored original preview on October 31, 2026. Guarded
+host/motion adoption and physical acceptance remain separate. This source revision
+makes no live changes.

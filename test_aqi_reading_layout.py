@@ -70,14 +70,23 @@ def test_metadata_and_rail_value_preserve_frozen_wire_meaning(animated):
 
 
 @pytest.mark.parametrize("animated", [False, True])
-def test_other_page_payloads_remain_byte_exact(animated):
+def test_other_pages_keep_bytes_except_explicit_weather_art_restoration(animated):
     endpoint = "offline://aqi-reading-other-test"
     firmware_compat.observe_device(endpoint, {"version": "1.2.2"})
-    current = {key: firmware_compat.prepare_payload(endpoint, body)
-               for key, _, group, body in gallery.examples(animated) if group != "Air quality"}
+    examples = [(key, group, firmware_compat.prepare_payload(endpoint, body))
+                for key, _, group, body in gallery.examples(animated) if group != "Air quality"]
+    current = {key: body for key, _, body in examples}
+    weather_ids = {key for key, group, _ in examples if group == "Weather"}
     for case in BASELINE["other_pages"]:
         if case["animated"] == animated:
-            assert current[case["id"]] == case["payload"]
+            actual, original = current[case["id"]], case["payload"]
+            if case["id"] in weather_ids:
+                # Weather artwork was intentionally restored after this AQI
+                # baseline. Keep all reading, lane and metadata bytes protected;
+                # its icon frames/timing have a separate historical oracle.
+                assert {k: v for k, v in actual.items() if k != "icon"} == {k: v for k, v in original.items() if k != "icon"}
+            else:
+                assert actual == original
 
 
 @pytest.mark.parametrize("value", [0, 50, 51, 100, 101, 150, 151, 200, 201, 300, 301, 500])

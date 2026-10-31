@@ -71,16 +71,16 @@ def test_gpu_has_six_distinct_rotor_poses_and_a_consistent_loop_seam():
     assert changes[-1] <= max(changes[:-1])  # No larger reset jump at loop end.
 
 
-def test_rain_falls_on_each_beat_without_full_drop_flashes():
+def test_restored_rain_keeps_original_alternating_highlights():
     frames, delay = weather_icons.frames('rain')
     assert delay == 120
-    for i in range(len(frames)):
-        frame, following = frames[i], frames[(i + 1) % len(frames)]
-        assert [row[1] for row in frame[5:]] != [row[1] for row in following[5:]]
-        assert all(frame[y][x] != weather_icons.RICH['snow'] for y in range(5, 8) for x in range(8))
+    for i, frame in enumerate(frames):
+        highlights = sum(frame[y][x] == weather_icons.RICH['snow'] for y in range(5, 8) for x in range(8))
+        assert highlights == (5 if i % 2 else 0)
 
 
-def test_overcast_has_open_space_around_the_cloud_silhouette():
+def test_restored_overcast_retains_original_full_width_bank():
     frames, _ = weather_icons.frames('overcast')
     for frame in frames:
-        assert all(any(pixel == (0, 0, 0) for pixel in row) for row in frame)
+        assert all(pixel != (0, 0, 0) for pixel in frame[2])
+        assert all(pixel == (0, 0, 0) for pixel in frame[0])

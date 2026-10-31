@@ -20,25 +20,19 @@ def source(path):
 
 
 @pytest.mark.parametrize('kind', ['cloudy', 'overcast'])
-def test_cloud_drift_preserves_the_whole_silhouette_without_wrapping(kind):
-    frames, _delay = weather.frames(kind)
-    shapes = [{(x, y) for y, row in enumerate(frame) for x, color in enumerate(row) if color != (0, 0, 0)}
-              for frame in frames]
-    left = [min(x for x, _y in shape) for shape in shapes]
-    assert max(left) - min(left) == 1
-    normalized = [{(x - offset, y) for x, y in shape} for offset, shape in zip(left, shapes)]
-    assert all(shape == normalized[0] for shape in normalized)
-    assert all(abs(a - b) <= 1 for a, b in zip(left, left[1:] + left[:1]))
-    # The object, including every shadow cell, remains on the icon canvas.
-    assert len({len(shape) for shape in shapes}) == 1
+def test_restored_cloud_light_moves_while_silhouette_stays_fixed(kind):
+    frames, delay = weather.frames(kind)
+    shapes = [{(x, y) for y, row in enumerate(frame) for x, color in enumerate(row) if color != (0, 0, 0)} for frame in frames]
+    assert delay == 240 and len(frames) == 8
+    assert all(shape == shapes[0] for shape in shapes)
+    assert len({str(frame) for frame in frames}) == 8
 
 
-def test_rain_leaves_clear_columns_between_three_staggered_streams():
+def test_restored_rain_retains_original_five_stream_positions():
     frames, delay = weather.frames('rain')
-    assert delay == 120
+    assert delay == 120 and len(frames) == 6
     for frame in frames:
-        assert {x for y in range(5, 8) for x in range(8) if frame[y][x] != (0, 0, 0)} == {1, 4, 6}
-        assert all(frame[y][x] == (0, 0, 0) for y in range(5, 8) for x in (0, 2, 3, 5, 7))
+        assert {x for y in range(5, 8) for x in range(8) if frame[y][x] != (0, 0, 0)} == {1, 2, 3, 5, 6}
 
 
 def test_companion_wave_returns_to_rest_and_does_not_replace_eye_expression():
