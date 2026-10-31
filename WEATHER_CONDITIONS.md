@@ -1,96 +1,88 @@
-# Weather conditions from provider code to displayed page
+# Original weather animations and accurate condition routing
 
-The weather artwork already had drizzle and overcast designs, but production
-routing collapsed them into rain and a generic cloud. Freezing rain/drizzle
-also appeared as ordinary rain. Numeric ranges treated unassigned codes such
-as 52 and 98 as real precipitation, and a negative code became partly cloudy.
+The weather candidate restores the actual pre-revamp animations from commit
+`8f73bdc9ee5f1ee5a89ad9bd17e2bdbea271f8c4`, following the request to bring back
+the old animations. Original cloud colours, silhouettes, moving crown highlights,
+five-stream rain cycle, alternating bright drop heads and frame timing return.
+Clear/day, moon/night, partly cloudy, fog, drizzle, snow, sleet and storm also
+match that source frame-for-frame. This is a restoration, not newly drawn art.
 
-This change maps exact code membership from the provider's
-[documented WMO table](https://open-meteo.com/en/docs#weather_variable_documentation)
-through the actual parser, scene selector and wire payload. The 29 documented
-codes include heavy thunderstorm code 97. Related intensity variants share a
-condition-family icon rather than claiming 29 distinct pictograms.
+![Current comparison and restored original](docs/weather-conditions/condition-comparison.gif)
 
-| Codes | Condition family |
+The right-hand column is the restored original. The left is the pre-PR #25
+candidate source at `18c4ae6708fe71815ac22c25d4e21a35ca48b50a`; both are synthetic
+payload examples, not observations of the physical clock.
+
+The rejected hollow-ice and question-mark symbols have been removed. Freezing
+rain/drizzle retains its internal condition family and precipitation semantics,
+but deliberately shares the original rain animation. The icon therefore does
+not distinguish freezing liquid precipitation from ordinary rain. An unassigned
+current condition leaves the icon area blank and retains the valid temperature;
+it invents neither a sky condition nor a NOW precipitation reading. A valid
+forecast can still select the existing countdown independently.
+
+## Forecast and routing behavior
+
+Exact membership in the provider's documented code table replaces broad numeric
+ranges. Overcast and drizzle reach their original family artwork. Codes outside
+the documented set, including 52 and 98, stop producing false precipitation.
+Intensity and hail variants share family artwork; there are not 29 distinct icons.
+The provider table and its source were verified in the initial routing review.
+
+| Codes | Internal family / restored artwork |
 | --- | --- |
-| 0 | Clear, with day/night artwork |
-| 1, 2 | Mainly clear / partly cloudy, with day/night artwork |
-| 3 | Overcast |
-| 45, 48 | Fog / rime fog |
+| 0 | Clear, day/night |
+| 1, 2 | Partly cloudy, day/night |
+| 3 | Original full-width overcast |
+| 45, 48 | Fog |
 | 51, 53, 55 | Drizzle |
-| 56, 57, 66, 67 | Freezing drizzle / freezing rain |
-| 61, 63, 65, 80, 81, 82 | Rain / rain showers |
-| 71, 73, 75, 77, 85, 86 | Snow / snow grains / snow showers |
-| 95, 96, 97, 99 | Thunderstorm, including hail variants |
-| Values outside the documented provider set | Explicit unknown condition |
+| 56, 57, 66, 67 | Freezing precipitation / original rain artwork |
+| 61, 63, 65, 80, 81, 82 | Rain |
+| 71, 73, 75, 77, 85, 86 | Snow |
+| 95, 96, 97, 99 | Thunderstorm |
+| Unassigned codes | Unknown / blank icon |
 
-## Resulting behavior
-
-Overcast and drizzle reach their existing reviewed sprites. Freezing liquid
-precipitation uses a cold cloud and two hollow ice-shaped drops, with a bounded
-glint following their edges. This symbol denotes freezing rain/drizzle; it is
-not the retained rain/snow mixture (`sleet`) reference. Only one system moves,
-and the hollow centres remain black in every pose and the low-light model.
-
-An unassigned current code uses a steady question mark while retaining the
-valid temperature. It does not invent a sky condition or report precipitation
-NOW. A valid forecast can still select the existing precipitation countdown
-independently of an unknown current condition.
-
-![Routed weather comparisons](docs/weather-conditions/condition-comparison.gif)
-
-A shared precipitation-family set protects all four decisions in current/forecast
-selection. Drizzle and freezing precipitation retain current NOW behavior,
-low-probability categorical forecast detection, exact returned timestamps and
-ceiling-rounded minute ETA. The existing dry-current-interval safeguard remains.
-The internal `kind="rain"` countdown contract is retained for compatibility.
-
-Known-code numeric lanes, meter positions, metadata, duration/lifetime settings,
-units and request cadence are unchanged. Twenty-one already-correct documented
-conditions remain byte-exact across day/night and static/animated variants.
-Unsupported 52/98 intentionally replace the old false NOW reading with the valid
-temperature and an unknown symbol. Manual/legacy cloud and sleet references are
-retained; freezing conditions are never classified as sleet.
+The shared precipitation-family set protects all four current/forecast decisions:
+NOW behavior, low-probability categorical forecast detection, exact returned
+timestamps, ceiling-rounded minute ETA and the dry-current-interval safeguard.
+The internal `kind="rain"` countdown contract remains. Valid-code numeric lanes,
+meters, units, metadata, request cadence and duration/lifetime remain protected.
 
 ## Review and verification
 
-The [self-contained review](docs/weather-conditions/index.html) has 36 representative
-current/forecast day/night comparisons, animation/static controls, 120 ms stepping,
-changed-only filtering and low-light mode. The complete manifest covers **228
-prepared cases**: 136 current-code variants and 92 forecast variants. All examples
-use illustrative readings and code fixtures, not real local weather.
+The [self-contained gallery](docs/weather-conditions/index.html) contains 36
+representative current/forecast day/night comparisons, static fallback controls,
+120 ms stepping and a low-light threshold view. The full manifest covers 228
+prepared payload cases. Readings and provider inputs are illustrative fixtures.
+Browser interaction and physical LED appearance remain unverified for this revision.
 
-The [static sheet](docs/weather-conditions/condition-comparison.png) and
-[low-light sheet](docs/weather-conditions/condition-low-light.png) cover the changed
-families. The animation closes every featured loop over 5.76 seconds and uses an
-exact 49-colour palette; encoded GIF frames and total timing are round-trip checked.
-Low-light is the existing per-channel 174 threshold, not calibrated gamma or LED
-diffusion. Browser interaction and physical legibility remain separate checks.
+The featured GIF includes overcast, rain, freezing rain and unknown conditions.
+It closes all featured loops over 5.76 seconds with an exact 53-colour palette;
+every decoded RGB frame and total timing are round-trip checked. The static and
+low-light sheets include drizzle too. Low-light applies the existing per-channel
+174 threshold; it is not calibrated gamma or LED diffusion.
 
-The sampled modern wire maximum is **1,912 bytes**, within the unchanged 2,048-byte
-limit. Only opaque 8-by-8 icon GIFs animate; the 23-by-8 RGB888 lane stays static
-and the separator stays black. Unknown is intentionally a single steady frame.
+The sampled modern wire maximum remains **1,912 bytes**, under the unchanged
+2,048-byte limit. Only the opaque 8-by-8 icon animates. The value lane remains
+static and its separator remains black. Unknown is one steady blank frame.
 
-With the project Python environment activated:
+`classic-frame-oracle.json` records independently captured frame hashes and delays
+from the historical Git source for ten original families in both day/night modes.
+It protects the restoration independently of current renderer output. Routing
+checks cover all documented codes, wet forecasts, unknown conditions, exact ETA,
+complete NOW glyphs and numeric-lane preservation. Artwork-specific assertions
+now enforce the requested original behavior rather than the superseded redesign.
+
+Regenerate with an activated project Python environment:
 
 ```console
 python -X utf8 weather_condition_review.py --output figures/weather-conditions
 ```
 
-The baseline is frozen at `18c4ae6708fe71815ac22c25d4e21a35ca48b50a`.
-Forecast fixtures were generated from that original Git source with HTTP blocked,
-after reproducing all 136 initial baseline cases byte-for-byte. Metadata records
-source/baseline and payload hashes, exact new wire bodies, routing, readings and
-timing. The gallery retains full decoded RGB frames.
-
-**141 new regression cases** cover every documented code through parsing, selection and
-actual payload generation, all wet forecast types with exact ETA, unassigned
-codes, freezing topology, complete NOW glyphs, byte-identical unaffected pages
-and the dry-interval guard. The full suite passed **3,613 tests in 137.37 seconds**,
-zero failures, errors or skips. An isolated built wheel passed 20 condition/motion
-payload cases and a freezing-countdown case outside the checkout with HTTP
-blocked and all three production modules matching source. CI results are recorded
-in the pull request. No live weather setting, host release, task, resident script,
-brightness or display power is changed by this implementation. Revised-symbol
-preview approval and guarded motion-policy adoption remain; the overall overhaul
-is active.
+The full suite passed **3,611 tests in 138.30 seconds**, with no failures, errors
+or skips. The previous 3,613-test result belongs to the superseded ice/question-mark
+candidate; its four ice-topology cases are replaced by two day/night rain-parity
+cases. The user approved the restored original animation preview on October 31, 2026.
+No live host, weather setting, scheduled task, resident script, brightness or
+power state is changed by this revision. Guarded host/motion adoption still requires fresh verification; physical
+acceptance is a separate step.

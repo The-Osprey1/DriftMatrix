@@ -88,22 +88,12 @@ def test_unassigned_codes_show_unknown_without_inventing_precipitation(code):
     animated = gallery.decode(body(scene, True))
     static = gallery.decode(body(scene, False))
     assert animated["frames"] == static["frames"] and len(animated["frames"]) == 1
-    expected = ("110", "001", "010", "000", "010")
-    for y, bits in enumerate(expected, 1):
-        assert [animated["frames"][0][y * 32 + x] != "000000" for x in range(2, 5)] == [b == "1" for b in bits]
+    assert all(animated["frames"][0][y * 32 + x] == "000000" for y in range(8) for x in range(8))
 
 
-@pytest.mark.parametrize("phase", range(4))
-def test_freezing_has_two_hollow_ice_shapes_distinct_from_snow_and_sleet(phase):
-    frame = icons.frames("freezing")[0][phase]
-    band = {(x, y) for y in range(5, 8) for x in range(8) if frame[y][x] != icons.BLACK}
-    expected = {(x, y) for centre in (2, 6) for x, y in ((centre, 5), (centre - 1, 6), (centre + 1, 6), (centre, 7))}
-    assert band == expected
-    assert frame[6][2] == frame[6][6] == icons.BLACK
-    assert all(max(frame[y][x]) >= 174 for x, y in band)
-    for other in ("rain", "snow", "sleet"):
-        reference = icons.frames(other)[0][0]
-        assert band != {(x, y) for y in range(5, 8) for x in range(8) if reference[y][x] != icons.BLACK}
+@pytest.mark.parametrize("day", [False, True])
+def test_freezing_reuses_original_rain_motion_without_new_ice_art(day):
+    assert icons.frames("freezing", day) == icons.frames("rain", day)
 
 
 def test_dry_current_forecast_probability_does_not_claim_precipitation_now():
@@ -118,13 +108,14 @@ def test_weather_table_covers_exactly_the_documented_codes():
     assert len(weather.WMO_ICON_KIND) == 29
 
 
-def test_already_correct_conditions_remain_byte_exact():
-    changed = {3, 51, 53, 55, 56, 57, 66, 67, -1, 4, 52, 98, 999}
-    for case in BASELINE["cases"]:
-        if case["code"] in changed:
-            continue
-        scene = weather.choose_scene(weather.parse_weather(provider(case["code"], case["day"]), now=NOW), now=NOW)
-        assert body(scene, case["animated"]) == case["payload"]
+def test_original_animation_frames_and_timing_match_frozen_history():
+    import hashlib
+    oracle = json.loads((Path(__file__).parent / "docs/weather-conditions/classic-frame-oracle.json").read_text())
+    assert oracle["source_revision"] == "8f73bdc9ee5f1ee5a89ad9bd17e2bdbea271f8c4"
+    for case in oracle["cases"]:
+        frames, delay = icons.frames(case["kind"], case["day"])
+        assert delay == case["delay_ms"]
+        assert [hashlib.sha256(bytes(c for row in frame for rgb in row for c in rgb)).hexdigest() for frame in frames] == case["frames_sha256"]
 
 
 @pytest.mark.parametrize("code", [51, 56, 61, 71, 95])

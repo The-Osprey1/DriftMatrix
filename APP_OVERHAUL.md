@@ -232,13 +232,15 @@ before guarded host adoption, including the requested AQI animation; physical
 appearance remains separate. This follow-up makes no live changes.
 
 
-## Weather condition routing follow-up
+## Weather condition routing and animation restoration
 
-A full provider-to-wire audit found that overcast and drizzle artwork was bypassed
-and freezing precipitation was shown as ordinary rain. Exact documented-code
-routing now selects those families and explicitly marks unknown conditions while
-retaining the valid temperature. Drizzle/freezing countdowns share the existing
-precipitation guard, timestamp and ETA rules. Actual-payload review covers every
-documented code in both day/night and static/animated modes, plus future events.
-See `WEATHER_CONDITIONS.md`. Revised symbols, guarded host/motion adoption and
-physical acceptance remain separate; this implementation makes no live changes.
+Exact documented-code routing preserves current/forecast semantics and stops
+unassigned codes from inventing precipitation. Following the user's rejection of
+the new symbols and preference for the old animations, weather artwork is restored
+from the original pre-revamp source, including cloud colours, moving highlights
+and the original five-stream rain cycle. Freezing precipitation shares the familiar
+rain animation; unknown conditions keep the valid temperature with a blank icon.
+Historical frame hashes and timing protect the restoration. See
+`WEATHER_CONDITIONS.md` for actual-payload previews and verification. The user approved the restored original preview on October 31, 2026. Guarded
+host/motion adoption and physical acceptance remain separate. This source revision
+makes no live changes.

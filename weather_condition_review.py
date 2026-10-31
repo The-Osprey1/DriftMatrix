@@ -16,7 +16,7 @@ BASELINE = ROOT / "docs/weather-conditions/before.json"
 NOW = datetime(2026, 10, 30, 12, tzinfo=timezone.utc)
 NAMES = {0: "Clear", 1: "Mainly clear", 2: "Partly cloudy", 3: "Overcast", 45: "Fog", 51: "Drizzle",
          56: "Freezing drizzle", 61: "Rain", 66: "Freezing rain", 71: "Snow", 95: "Thunderstorm", 999: "Unassigned code"}
-FEATURED = (3, 51, 66, 999)
+FEATURED = (3, 61, 66, 999)
 
 
 def snapshot(code, day, forecast=False):
@@ -48,7 +48,7 @@ def board(before, after, codes, *, elapsed=0, static=True, low_light=False):
     draw = ImageDraw.Draw(image); draw.fontmode = "1"; font = ImageFont.load_default(size=16)
     draw.text((16, 12), "WEATHER CONDITION ROUTING / illustrative readings", font=font, fill=(238, 242, 252))
     draw.text((16, 43), "BEFORE", font=font, fill=(169, 185, 207))
-    draw.text((432, 43), "PROPOSED", font=font, fill=(165, 231, 207))
+    draw.text((432, 43), "RESTORED ORIGINAL", font=font, fill=(165, 231, 207))
     for row, code in enumerate(codes):
         y = 76 + row * 128
         draw.text((16, y), f"{code}: {NAMES[code]}", font=font, fill=(238, 242, 252))
@@ -88,8 +88,8 @@ def main(argv=None):
                 after.append({**common, **pair[True]["after"], "static": pair[False]["after"]})
     still_before = {code: next(c for c in before if c["id"] == f"Current-{code}-True") for code in NAMES}
     still_after = {code: next(c for c in after if c["id"] == f"Current-{code}-True") for code in NAMES}
-    board(still_before, still_after, (3, 51, 56, 66, 999)).save(args.output / "condition-comparison.png")
-    board(still_before, still_after, (3, 51, 56, 66, 999), low_light=True).save(args.output / "condition-low-light.png")
+    board(still_before, still_after, (3, 51, 61, 66, 999)).save(args.output / "condition-comparison.png")
+    board(still_before, still_after, (3, 51, 61, 66, 999), low_light=True).save(args.output / "condition-low-light.png")
     period = math.lcm(*(sum(data[code]["durations"]) for data in (still_before, still_after) for code in FEATURED))
     frames = [board(still_before, still_after, FEATURED, elapsed=t, static=False) for t in range(0, period, 120)]
     colors = sorted({rgb for frame in frames for rgb in frame.getdata()}); assert len(colors) <= 256
@@ -106,10 +106,12 @@ def main(argv=None):
     assert elapsed == period
     data = {"before": before, "after": after}
     html = gallery.HTML.replace("App visual review", "Weather condition review")
-    html = html.replace("Values stay still while the icon moves.", "Provider-code routing selects the condition. Ice-shaped drops denote freezing rain/drizzle; a question mark denotes an unassigned code. Forecast cases retain their precise countdown.")
+    html = html.replace("Values stay still while the icon moves.", "Provider-code routing selects the condition. Original pre-revamp animations are restored. Freezing precipitation shares the familiar rain animation; unknown conditions leave the icon area blank. Forecast cases retain their precise countdown.")
     html = html.replace("The deployed weather and air quality services currently use static mode. Animated", "The weather service still uses static mode during this review. Animated")
     (args.output / "index.html").write_text(html.replace("__DATA__", json.dumps(data).replace("</", "<\\/")), encoding="utf-8")
-    result = {"baseline_head": frozen["head"], "provider_source": frozen["provider_source"],
+    result = {"restored_artwork_revision": "8f73bdc9ee5f1ee5a89ad9bd17e2bdbea271f8c4",
+              "classic_oracle_sha256": hashlib.sha256((ROOT / "docs/weather-conditions/classic-frame-oracle.json").read_bytes()).hexdigest(),
+              "baseline_head": frozen["head"], "provider_source": frozen["provider_source"],
               "baseline_sha256": hashlib.sha256(BASELINE.read_bytes()).hexdigest(),
               "source_hashes": {name: hashlib.sha256((ROOT / name).read_bytes()).hexdigest() for name in ("weather/weather_brief_push.py", "weather/weather_icons.py", "weather_condition_review.py")},
               "prepared_cases": len(cases), "gallery_cases": len(after), "maximum_payload_bytes": max(c["bytes"] for c in manifest),
