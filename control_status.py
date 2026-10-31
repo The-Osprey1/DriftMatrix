@@ -15,7 +15,7 @@ class HostSummary:
     rows: tuple[tuple[str, str, str], ...]
 
 
-def summarize(snapshot=None, *, configured=True):
+def summarize(snapshot=None, *, configured=True, calendar_needs_source=False):
     """A dead process never appears running just because a status file says so."""
     if not configured:
         return HostSummary("Legacy controls", "Choose driftmatrix.json to inspect the supervised services.", ())
@@ -51,6 +51,8 @@ def summarize(snapshot=None, *, configured=True):
             shown, note = "Running", "" if snapshot.get('healthy') else 'Host status needs attention.'
             if name in SERVICE_STATES and snapshot.get('healthy') and snapshot.get('config_matches'):
                 note = describe(service.get('activity'), media=name=='media')
+            if name == 'hub' and calendar_needs_source and snapshot.get('healthy') and snapshot.get('config_matches'):
+                note = 'Next Up needs a calendar source.'
         elif state == "STARTING":
             shown, note = "Starting", "Waiting for the worker to report ready."
         elif state == "FAILED":

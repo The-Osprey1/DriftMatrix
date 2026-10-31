@@ -121,3 +121,12 @@ The Services tab also reports whether native Windows playback was detected, no
 media is playing, a short inactive wait is in progress, or the bridge/provider is
 retrying. These are local producer reports; they do not confirm that the page is
 on screen. Track metadata is excluded. See [Media activity](../MEDIA_ACTIVITY.md).
+
+
+## Calendar setup explanation
+
+If Next Up is enabled without a calendar source, a confirmed healthy Hub now shows
+**Next Up needs a calendar source.** The window leaves the configuration unchanged.
+It does not fetch calendars or show private source values. The hint is suppressed
+when the host/configuration is unconfirmed. See
+[Next Up setup status](../CALENDAR_SETUP_STATUS.md).

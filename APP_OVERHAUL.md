@@ -1,10 +1,10 @@
 # App overhaul
 
-The art and animation revision is in `ART_MOTION_REVISION.md`. It revises fourteen
-host scenes and adds separate Ocean 3.1, Moon 2.3 and Now Playing 2.3 sources.
-The earlier proposals remain comparison references. The user approved the new
-visual direction on 2026-10-28; it has not been adopted into the running host or
-clock. Fresh snapshot, identity, memory and physical adoption checks remain.
+This is the source-review roadmap for the app overhaul. Design references and
+later compact candidates are retained together; source review, guarded host/device
+adoption and physical acceptance are separate records. The art direction approved
+on 2026-10-28 is documented in `ART_MOTION_REVISION.md`; later weather/AQI palette
+and animation choices are documented in their own reviews.
 
 Actual-worker acceptance is documented in `HOST_FLEET_ACCEPTANCE.md`. The combined
 run found and fixes a cold-start image-format gap before the first health probe.
@@ -30,24 +30,29 @@ visual polish**. This is broader than the first visual pass below.
   the panel's constrained memory budget. Any physical deployment requires a fresh
   snapshot and post-deployment verification, with physical appearance kept separate.
 
-## Evidence and progress
+## Current source-review coverage
 
-The October 26 read-only check found the pinned 1.2.2 host healthy with all five
-workers running and no automatic worker restarts. The clock had about 100 minutes
-uptime, no resident script errors and a 34,804-byte largest free block. All six CI
-jobs for firmware compatibility passed. These are observations, not long-term proof.
+This table describes code and review artifacts, not a live-host inventory. Read
+current configuration, process state, device identity and private rollback evidence
+before adoption. Design approval does not establish physical pixel appearance.
 
-| Workstream | Current evidence | Remaining work |
+| Workstream | Current source evidence | Acceptance boundary |
 | --- | --- | --- |
-| Weather | Rounded cloud edges and layered overcast; rain advances without white drop flashes. Animated/static previews measured. | Review the full condition family; adopt a suitable motion policy after staged panel verification. |
-| PC stats | GPU rotor poses plus a dedicated receive readout: explicit MiB/s/GiB/s, simultaneous value/unit, packet motion, configurable visual scale and hardware-first alert priority. See `NETWORK_OVERHAUL.md`. | User review of the two-row layout, browser acceptance and guarded host/physical adoption. |
-| Desk Companion | Cleaner round silhouette, 120 ms blink, unchanged 1.92 s cycle and five mood props. | User visual review, then staged host adoption and physical appearance check. |
-| AQI | Existing six category designs retained as reference. Live service is explicitly static. | Review category legibility, severity pacing and whether animation should be enabled. |
-| Moon / Ocean | Installed sources preserved. Ocean 3.0 and Moon 2.2 have separate visual candidates. Explicit legacy identity, exact snapshots and guarded rollback/resume support are implemented in `LEGACY_SCRIPT_IDENTITY.md`. | User visual review, fresh live identity/maintenance validation, then guarded memory/FPS and physical adoption checks. |
-| Now Playing / information apps | Calendar, timers and alert context have staged candidates. Separate Now Playing 2.2 preserves normal title scrolling, clears the gutter, bounds record motion and adds optional held reduced-motion cards. See `INFORMATION_OVERHAUL.md`, `ALERT_CONTEXT_OVERHAUL.md` and `NOW_PLAYING_OVERHAUL.md`. | User visual review, device memory/FPS and physical adoption gates. |
-| Everyday controls | Canonical-aware `driftmatrix controls`, custom Focus/snooze durations, persistent feedback and local service overview are implemented. Focus commits state before queue acknowledgement. PR #10 passed 6/6 CI. See `docs/desk-controls.md`. | User review, then guarded host-release adoption. Screen-reader acceptance is unverified. |
+| Weather | Original pre-revamp animations restored; documented provider-code routing, wet forecast semantics and unknown-condition handling. See `WEATHER_CONDITIONS.md`. | Review the selected version; actual delivery, memory, physical appearance and motion policy require runtime evidence. |
+| PC stats / NET | GPU motion plus explicit MiB/s/GiB/s receive readings, configurable visual scale and hardware-first alert priority. See `NETWORK_OVERHAUL.md`. | Native sampling, alert activation and physical two-row readability remain distinct from fixture rendering. |
+| Desk Companion | Shaded shell, breathing, wave, brief blink and mood props. See `ART_MOTION_REVISION.md`. | Actual selected mood and physical legibility need runtime/user evidence. |
+| AQI | Restored paired lungs, consistent palette, explicit full-size AQI label through three digits and preserved relevance policy. See `AQI_READABILITY.md`. | An enabled worker may intentionally hide good-air readings; physical animation is separate from delivery/config state. |
+| Moon / Ocean | Compact Moon 2.4 and Ocean 3.3 source candidates preserve reviewed art; Ocean restores teal water, green kelp and olive reef. See `MOON_COMPACT.md`, `OCEAN_COMPACT.md`, `OCEAN_PALETTE.md`. | Exact source identity, shared VM ceiling, lit drawing/performance and physical acceptance are separate gates. |
+| Now Playing | Compact 2.4 source, held reduced-motion cards, readable title/progress behavior and private media activity/recovery. See `MEDIA_COMPACT.md`, `MEDIA_ACTIVITY.md`. | Local playback detection does not prove the clock fetched/displayed it; real lit playback and physical acceptance remain separate. |
+| Calendar / timers / alerts | Held event identity/ETA cards, long timer labels, quake distance and gaming process age. See `INFORMATION_OVERHAUL.md`, `ALERT_CONTEXT_OVERHAUL.md`. | Calendar needs a configured source; synthetic alert examples are not live events or proof of provider availability. |
+| Everyday controls | Canonical paths, custom Focus/snooze durations, durable receipts, host/worker activity and calendar setup explanation. See `docs/desk-controls.md`, `FEED_ACTIVITY.md`, `CALENDAR_SETUP_STATUS.md`. | Use matching host/controls source and the intended shortcut. Feed/setup explanations require current matching configuration and confirmed process state. |
 
-## First visual pass
+The dated development entries below describe their then-current state. Later
+review documents supersede their candidate versions and pending-work lists. They
+must not be used to infer which release or motion policy is running now.
+
+## Historical first visual pass
+
 
 13 updated scenes within a 26-scene comparison set: seven weather states, five
 companion moods and GPU activity. Other scenes are explicit reference designs.
@@ -256,13 +261,6 @@ old success from appearing current. The native isolated Services preview and
 verification scope are in `FEED_ACTIVITY.md`. The running host and shortcut are
 unchanged by this source implementation; guarded adoption remains separate.
 
-## Focus timing follow-up
-
-The break steam and completion GIFs used off-grid delays despite the established
-120 ms timing rule. `FOCUS_TIMING.md` compares the actual old/new wire payloads:
-unchanged art and timer lanes, slightly slower steam, and a longer one-shot cue.
-This remains a separate source candidate pending visual approval and guarded host
-adoption; it is not evidence that a physical clock already displays the change.
 
 ## Now Playing status and disconnect recovery
 
@@ -276,3 +274,20 @@ brief permission denial while retaining strict record/identity checks. See
 `MEDIA_ACTIVITY.md`. No resident artwork
 or live host setting is changed by this source proposal. Physical lit playback
 and guarded host/controls adoption remain separate.
+
+
+## Calendar setup visibility
+
+The read-only Services candidate explains when Next Up is enabled without any
+calendar source. It derives the hint from the validated selected configuration
+and shows it only with a healthy, matching host and confirmed Hub process. It
+never selects a calendar, fetches a feed, changes enablement or restarts the host.
+See `CALENDAR_SETUP_STATUS.md` for the native demo and scope.
+
+## Focus timing follow-up
+
+The break steam and completion GIFs used off-grid delays despite the established
+120 ms timing rule. `FOCUS_TIMING.md` compares the actual old/new wire payloads:
+unchanged art and timer lanes, slightly slower steam, and a longer one-shot cue.
+This remains a separate source candidate pending visual approval and guarded host
+adoption; it is not evidence that a physical clock already displays the change.

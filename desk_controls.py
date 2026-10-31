@@ -121,7 +121,11 @@ class ControlsModel:
         if self.config is None:
             return control_status.summarize(configured=False)
         try:
-            return control_status.summarize(self.service_snapshot(self.current_config()))
+            config = self.current_config()
+            calendar = config.services['hub'].options.get('next_up', {})
+            needs_source = (config.services['hub'].enabled and calendar.get('enabled', False)
+                            and not calendar.get('sources'))
+            return control_status.summarize(self.service_snapshot(config), calendar_needs_source=needs_source)
         except (ConfigError, OSError):
             return control_status.HostSummary('Configuration or status unavailable',
                 'Check the selected configuration. Reopen controls if its panel or data folder changed.', ())
@@ -372,7 +376,7 @@ class DeskControls:
                 'next_check_seconds':300, 'animated':True, 'reported_at':time.time()}
             snapshot['services']['aqi']['activity'] = {'state':'hidden_good_air',
                 'next_check_seconds':900, 'aqi':46, 'reported_at':time.time()}
-            summary = control_status.summarize(snapshot)
+            summary = control_status.summarize(snapshot, calendar_needs_source=True)
         else:
             summary = self.model.host_summary()
         self.host_headline.set(('DEMO · ' if self.demo else '') + summary.headline)
