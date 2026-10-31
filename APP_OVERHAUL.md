@@ -263,3 +263,16 @@ The break steam and completion GIFs used off-grid delays despite the established
 unchanged art and timer lanes, slightly slower steam, and a longer one-shot cue.
 This remains a separate source candidate pending visual approval and guarded host
 adoption; it is not evidence that a physical clock already displays the change.
+
+## Now Playing status and disconnect recovery
+
+The media follow-up explains idle/playing, inactive grace, setup retries and
+Windows-provider failures through owned worker activity. It keeps track metadata
+out of status and distinguishes local producer readiness from clock delivery.
+Expected broken-pipe/reset/abort clients no longer create server tracebacks;
+unexpected failures keep normal error reporting, and real HTTP recovery tests
+require the next request to succeed. Local status reads gain bounded retries for
+brief permission denial while retaining strict record/identity checks. See
+`MEDIA_ACTIVITY.md`. No resident artwork
+or live host setting is changed by this source proposal. Physical lit playback
+and guarded host/controls adoption remain separate.

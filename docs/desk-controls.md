@@ -113,3 +113,11 @@ expire with the feed's next-check interval and are reset on worker restart. A
 sent page is not a claim that it is currently on screen. See
 [Feed activity](../FEED_ACTIVITY.md) for the native demo and evidence boundaries.
 Older hosts remain supported with an explicit activity-not-reported message.
+
+
+## Now Playing activity
+
+The Services tab also reports whether native Windows playback was detected, no
+media is playing, a short inactive wait is in progress, or the bridge/provider is
+retrying. These are local producer reports; they do not confirm that the page is
+on screen. Track metadata is excluded. See [Media activity](../MEDIA_ACTIVITY.md).

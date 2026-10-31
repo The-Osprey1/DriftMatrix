@@ -1,10 +1,13 @@
-"""Bounded worker feed activity and local-only, age-aware explanations."""
+"""Bounded worker activity and local-only, age-aware explanations."""
 from __future__ import annotations
 
 import math
 import time
 
-STATES = frozenset({"fetching", "delivered", "hidden_good_air", "data_unavailable", "panel_unavailable"})
+FEED_STATES = frozenset({"fetching", "delivered", "hidden_good_air", "data_unavailable", "panel_unavailable"})
+MEDIA_STATES = frozenset({"media_starting", "media_setup_wait", "media_playing", "media_idle", "media_grace", "media_unavailable"})
+STATES = FEED_STATES | MEDIA_STATES
+SERVICE_STATES = {"weather": FEED_STATES - {"hidden_good_air"}, "aqi": FEED_STATES, "media": MEDIA_STATES}
 
 
 def valid_report(value):
@@ -41,14 +44,23 @@ def valid_record(value):
     return {**report, "reported_at": timestamp}
 
 
-def describe(value, *, now=None):
+def describe(value, *, now=None, media=False):
+    subject = "Media" if media else "Feed"
     record = valid_record(value)
     if record is None:
-        return "Feed activity has not been reported by this host."
+        return f"{subject} activity has not been reported by this host."
     age = (time.time() if now is None else now) - record["reported_at"]
     if not math.isfinite(age) or age < -5 or age > max(30, record["next_check_seconds"] + 30):
-        return "Feed activity is out of date; waiting for a new report."
+        return f"{subject} activity is out of date; waiting for a new report."
     state = record["state"]
+    if state == "media_starting":
+        return "Preparing the media bridge."
+    if state == "media_playing":
+        return "Playback detected."
+    if state == "media_idle":
+        return "No media playing."
+    if state == "media_grace":
+        return "Playback inactive · waiting briefly."
     if state == "fetching":
         return "Checking the feed."
     if state == "delivered":
@@ -58,5 +70,6 @@ def describe(value, *, now=None):
         return f"Page hidden · good air (AQI {record['aqi']})."
     delay = max(0, math.ceil(record["next_check_seconds"] - max(0, age)))
     retry = f"retrying in {delay} s" if delay else "retry due"
-    reason = "Feed data unavailable" if state == "data_unavailable" else "Clock delivery failed"
+    reason = {"data_unavailable": "Feed data unavailable", "panel_unavailable": "Clock delivery failed",
+              "media_unavailable": "Windows media unavailable", "media_setup_wait": "Media bridge setup unavailable"}[state]
     return f"{reason} · {retry}."

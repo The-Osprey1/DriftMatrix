@@ -51,7 +51,7 @@ from now_playing_bridge import (
     resolve_lan_ip,
 )
 import panel_gate
-from service_runtime import DriftMatrixConfig, run_owned, worker_adapter, async_wait
+from service_runtime import DriftMatrixConfig, run_owned, worker_adapter, async_wait, report_activity
 from focus_control import default_data_dir
 
 try:
@@ -1121,6 +1121,7 @@ async def run_script_bridge(
     next_lan_check = 0.0
 
     try:
+        report_activity("media_starting", next_check_seconds=5)
         if owns_store:
             panel_host = urlsplit(endpoint).hostname
             if not panel_host:
@@ -1141,6 +1142,7 @@ async def run_script_bridge(
                     server = make_server("0.0.0.0", port, state_store, panel_ip)
                 except (OSError, RuntimeError) as error:
                     setup_failures += 1
+                    report_activity("media_setup_wait", next_check_seconds=network_retry_delay(setup_failures))
                     if should_log_failure(setup_failures):
                         logger.warning(
                             "State bridge waiting for the LAN: %s (%d attempts)",
@@ -1187,6 +1189,7 @@ async def run_script_bridge(
                     )
                 except RuntimeError as error:
                     install_failures += 1
+                    report_activity("media_setup_wait", next_check_seconds=network_retry_delay(install_failures))
                     if should_log_failure(install_failures):
                         logger.warning(
                             "Device renderer setup unavailable: %s (%d attempts)",
@@ -1283,6 +1286,13 @@ async def run_script_bridge(
                     state_store.update(BridgeState(revision=revision))
                     logger.info("Playback stopped; device renderer will leave rotation")
 
+            if poll_failed:
+                activity = "media_unavailable"
+                next_check = max(float(poll_seconds), next_manager_retry - time.monotonic(), 0.01)
+            else:
+                activity = "media_playing" if snapshot is not None else "media_grace" if last_semantic[0] else "media_idle"
+                next_check = max(0.01, float(poll_seconds))
+            report_activity(activity, next_check_seconds=next_check)
             await async_wait(stop_event, max(0.01, float(poll_seconds)))
     finally:
         state_store.clear()

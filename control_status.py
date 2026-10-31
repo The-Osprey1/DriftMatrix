@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from service_activity import describe
+from service_activity import SERVICE_STATES, describe
 
 SERVICE_LABELS = {"hub": "Utility Hub", "media": "Now Playing", "pc_stats": "PC stats",
                   "weather": "Weather", "aqi": "Air quality", "drift_link": "Drift-Link"}
@@ -49,8 +49,8 @@ def summarize(snapshot=None, *, configured=True):
             shown, note = "Stopped", "The supervisor is not running."
         elif state == "RUNNING" and service.get("live"):
             shown, note = "Running", "" if snapshot.get('healthy') else 'Host status needs attention.'
-            if name in ("weather", "aqi") and snapshot.get('healthy') and snapshot.get('config_matches'):
-                note = describe(service.get('activity'))
+            if name in SERVICE_STATES and snapshot.get('healthy') and snapshot.get('config_matches'):
+                note = describe(service.get('activity'), media=name=='media')
         elif state == "STARTING":
             shown, note = "Starting", "Waiting for the worker to report ready."
         elif state == "FAILED":

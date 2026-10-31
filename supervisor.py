@@ -22,7 +22,7 @@ import psutil
 from config_loader import ConfigError, SERVICE_NAMES
 from service_runtime import ServiceAlreadyRunning, scope_directory, stop_signals, supervisor_ownership
 from supervisor_worker import worker_main
-from service_activity import valid_report, valid_record
+from service_activity import SERVICE_STATES, valid_report, valid_record
 
 WORKER_MODULES = {"hub": "utility_hub", "media": "now_playing_push", "pc_stats": "pc_stats_push",
                   "weather": "weather.weather_brief_push", "aqi": "weather.aqi_brief_push",
@@ -59,18 +59,26 @@ def atomic_json(path, value):
 
 
 def read_record(path):
-    try:
-        with path.open("r", encoding="utf-8") as stream:
-            text = stream.read(262145)
-        if len(text) > 262144:
-            raise ValueError()
-        value = json.loads(text)
-        if not isinstance(value, dict):
-            raise ValueError()
-        json.dumps(value, allow_nan=False)
-        return value
-    except (OSError, ValueError, UnicodeError, RecursionError):
-        raise ConfigError("Local supervisor record is missing or invalid") from None
+    # Windows may deny a read briefly while another process replaces the
+    # heartbeat file. Retry only that access contention, never invalid data.
+    for attempt in range(6):
+        try:
+            with path.open("r", encoding="utf-8") as stream:
+                text = stream.read(262145)
+            if len(text) > 262144:
+                raise ValueError()
+            value = json.loads(text)
+            if not isinstance(value, dict):
+                raise ValueError()
+            json.dumps(value, allow_nan=False)
+            return value
+        except PermissionError:
+            if attempt == 5:
+                break
+            time.sleep(0.01 * (attempt + 1))
+        except (OSError, ValueError, UnicodeError, RecursionError):
+            break
+    raise ConfigError("Local supervisor record is missing or invalid") from None
 
 
 def process_matches(pid, created):
@@ -256,9 +264,9 @@ class Supervisor:
                     continue
                 if message.get("state") == "RUNNING" and service.state == "STARTING":
                     service.state = "RUNNING"
-                if service.name in ("weather", "aqi") and service.state == "RUNNING":
+                if service.name in SERVICE_STATES and service.state == "RUNNING":
                     report = valid_report(message.get("activity"))
-                    if report is not None and (service.name == "aqi" or report["state"] != "hidden_good_air"):
+                    if report is not None and report["state"] in SERVICE_STATES[service.name]:
                         service.activity = {**report, "reported_at": time.time()}
                 if isinstance(message.get("error"), str) and message["error"].isidentifier():
                     service.last_error = message["error"]
@@ -418,7 +426,7 @@ def status(config):
             result["services"][name] = {key: item[key] for key in
                 ("state", "pid", "exit_code", "last_error", "restart_count", "circuit_open", "escalated", "retry_in_seconds")}
             result["services"][name]["live"] = process_matches(item["pid"], item["process_created"])
-            if name in ("weather", "aqi"):
+            if name in SERVICE_STATES:
                 result["services"][name]["activity"] = valid_record(item.get("activity"))
         result["degraded"] = any(item["state"] == "FAILED" for item in result["services"].values())
         result["healthy"] = result["healthy"] and not result["degraded"]

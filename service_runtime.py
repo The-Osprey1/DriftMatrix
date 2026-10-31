@@ -101,7 +101,7 @@ def worker_notifications(callback, *, activity_callback=None):
 
 
 def report_activity(state, *, next_check_seconds, aqi=None, animated=None):
-    """Supervised feeds report evidence only; standalone entry points stay local."""
+    """Supervised workers report evidence only; standalone entry points stay local."""
     callback = _activity.get()
     if callback is None:
         return

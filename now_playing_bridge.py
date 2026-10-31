@@ -9,7 +9,9 @@ from __future__ import annotations
 from dataclasses import dataclass
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import json
+import logging
 import socket
+import sys
 import threading
 import time
 from typing import Any, Callable
@@ -133,6 +135,15 @@ class BridgeStateStore:
 class _BridgeHTTPServer(ThreadingHTTPServer):
     daemon_threads = True
     allow_reuse_address = True
+
+    def handle_error(self, request, client_address):
+        error = sys.exc_info()[1]
+        if isinstance(error, (BrokenPipeError, ConnectionResetError, ConnectionAbortedError)):
+            # A disconnected reader does not mean the state producer failed.
+            logging.getLogger("driftmatrix.media.bridge").debug(
+                "Media client disconnected: %s", type(error).__name__)
+            return
+        super().handle_error(request, client_address)
 
 
 def make_server(

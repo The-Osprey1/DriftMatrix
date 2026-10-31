@@ -366,6 +366,8 @@ class DeskControls:
                 name: {'state': 'DISABLED' if name == 'drift_link' else 'RUNNING',
                        'live': name != 'drift_link', 'restart_count': 0}
                 for name in control_status.SERVICE_LABELS}}
+            snapshot['services']['media']['activity'] = {'state':'media_idle',
+                'next_check_seconds':1, 'reported_at':time.time()}
             snapshot['services']['weather']['activity'] = {'state':'delivered',
                 'next_check_seconds':300, 'animated':True, 'reported_at':time.time()}
             snapshot['services']['aqi']['activity'] = {'state':'hidden_good_air',

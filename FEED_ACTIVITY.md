@@ -37,8 +37,8 @@ owned by the AQI sender. No new page or always-visible AQI policy is introduced.
 Workers send a bounded state code, expected next-check delay and only the fields
 required by that state: the AQI value when hidden or animation mode after a push.
 They do not send provider URLs, raw exception text, configuration values or free
-text into supervisor status. Only the known feed services can publish these
-reports, and only AQI can report good-air hiding.
+text into supervisor status. Reports are accepted only for their owning service. Weather/AQI use feed states,
+while media uses its own bounded states; only AQI can report good-air hiding.
 
 The supervisor stamps each valid report on receipt from that child's existing
 IPC connection. It clears activity before every start or restart, preventing a
@@ -84,3 +84,10 @@ CI results are recorded in the pull request.
 Host adoption is separate: use a matching host and controls release, including any
 existing shortcut that points at an older release. Preserve the config, task,
 shortcut and clock snapshot/rollback evidence before a guarded cutover.
+
+
+## Now Playing follow-up
+
+`MEDIA_ACTIVITY.md` extends the same child-bound reporting channel to the media
+worker. It explains playing, idle, brief inactive grace, setup retries and Windows
+provider errors without publishing track metadata or claiming physical display.
