@@ -1,0 +1,198 @@
+# @name Ocean
+# @desc Bright reef water, one visitor at a time and a gold school
+# @version 3.4
+# 3.4 (2026-10-31). 3.3 ran 28 FPS on the panel (minimum 18) on about 200
+# native draw calls a frame. 3.4 draws with about 80: light shafts as one
+# horizontal run per shaft per row, tapering with depth; the seabed as runs
+# rebuilt only when it scrolls; a school of four; and one visitor at a time --
+# the shark only every four to six minutes of showing. The water is brighter,
+# gold-tinted in the morning and warm late in the day. Every line() is
+# horizontal: no script here has used another kind, so none is assumed.
+# Keep ocean-v3.3.ax unchanged for rollback.
+class Ocean
+var visible,scene_ms,lastt,lastf,seed,tide,lx,ly,ldir,fx,fy,tx,ty,ox,oy,scat,P,W,H,T,SN,SL,KL,sp,bed,bg,hr,kx,fl,R1,R2,VY,VS,vk,vx,vy,vd,vs,vnext,shark_next,last_kind
+def init()
+self.visible=false self.scene_ms=0 self.lastt=0 self.lastf=now_ms() self.seed=1 self.tide=0.0
+self.lx=8.0 self.ly=3.4 self.ldir=1.0 self.scat=0.0
+self.ox=[0.0,-2.2,-2.0,-4.2] self.oy=[0.0,0.8,-0.8,0.1] self.fx=[8.0,6.0,6.0,4.0] self.fy=[3.4,3.4,3.4,3.4] self.tx=[8.0,6.0,6.0,4.0] self.ty=[3.4,3.4,3.4,3.4]
+# Palette, by index: 0-1 shafts, 2-3 sand, 4-5 rock, 6-7 kelp, 8 bubble,
+# 9-11 school, 12 marine snow, 13-14 manta, 15-16 shark, 17-18 angelfish,
+# 19-20 jellyfish, 21-22 crab, 23-24 turtle, 25-26 morning/afternoon tint.
+var c=bytes("AFEBF06EC8DC786446A8966A5A604E8C90701E8C465AD26EBEF0FFFFD66EF0AF46AA642878AABE50B3D8C9EAF4788CA0AABECDFF8C3CFFDC78D278FF8C50C8E65032FF8C5A3C96508CC86EFFBE64FF965A")
+self.P=[] var i=0 while i<c.size() self.P.push(c.get(i,-3)) i+=3 end
+self.W=[0,0,0,0,0,0,0,0] self.H=[0,0,0,0] self.hr=-2 self.bg=-1 self.bed=[]
+self.kx=bytes("0107121C") self.fl=bytes("0000010100000001020201000000010102010000000001020201010000010100")
+# Sine samples retain their exact float32 representation; no fixed-point approximation.
+self.T=bytes() self.T.resize(512) i=0 while i<128 self.T.setfloat(i*4,self.sn(real(i)/128.0)) i+=1 end
+self.SN=bytes() self.SN.resize(32) self.SL=[] self.KL=[] self.sp=3
+i=0 while i<32 self.SN[i]=0 i+=1 end
+self.R1=self.runs(bytes("C006FC03FF03C600")) self.R2=self.runs(bytes("C000FC03FF07C606"))
+# Per visitor: shark, manta, turtle, angelfish, jellyfish, crab.
+self.VY=[2.0,1.0,2.0,2.5,3.5,7.0] self.VS=[5.0,2.4,1.6,2.2,0.9,1.2]
+self.vk=-1 self.vnext=4000 self.shark_next=150000 self.last_kind=-1 self.vx=0.0 self.vy=0.0 self.vd=1.0 self.vs=0.0
+end
+def should_show() var p=shared.get("sunset.phase") if p!=nil&&shared.age("sunset.phase")<300000 return p=="day" end var h=hour() return h<0||(h>=7&&h<17) end
+def duration() return 30000 end
+def sn(x) x=x-int(x) if x<0.0 x+=1.0 end var n=false if x>0.5 x-=0.5 n=true end var f=x*2.0,u=f*(1.0-f) return n?-(16.0*u/(5.0-4.0*u)):(16.0*u/(5.0-4.0*u)) end
+def sq(v) if v<=0.0 return 0.0 end var r=v,i=0 while i<6 r=(r+v/r)*0.5 i+=1 end return r end
+def mix(a,b,n) if n<0 n=0 end if n>100 n=100 end var ar=(a>>16)&0xFF,ag=(a>>8)&0xFF,ab=a&0xFF,br=(b>>16)&0xFF,bg=(b>>8)&0xFF,bb=b&0xFF return (int(ar+(br-ar)*n/100)<<16)|(int(ag+(bg-ag)*n/100)<<8)|int(ab+(bb-ab)*n/100) end
+def lcg() self.seed=(self.seed*1103515245+12345)&0x3FFFFFFF return self.seed end
+def fade_pixel(x,y,col) if x<0||x>=32||y<0||y>=8 return end if x>=3&&x<=28 pixel(x,y,col) return end var f=(x<3)?real(x)/3.0:real(31-x)/3.0 if f>0.0 pixel(x,y,self.mix(self.W[y],col,int(f*100.0))) end end
+# Horizontal run, clipped here: 3.3 never drew off-screen and the firmware's
+# clipping is not relied on.
+def hl(x0,x1,y,col) if y<0||y>=8 return end if x0<0 x0=0 end if x1>31 x1=31 end if x0<=x1 line(x0,y,x1,y,col) end end
+# Shark masks (11 bits a row) to runs of [row, first, last].
+def runs(m)
+var out=bytes(),r=0
+while r<4
+var bits=m.get(r*2,2),c=0
+while c<11
+if ((bits>>(10-c))&1)==1 var s=c while c<10&&((bits>>(9-c))&1)==1 c+=1 end out.add(r,1) out.add(s,1) out.add(c,1) end
+c+=1
+end
+r+=1
+end
+return out
+end
+# Water rows for the hour: brighter than 3.3, gold in the morning, warm late.
+def tint(h)
+var base=bytes("2896B41E80A0166C8C105A7A0C4866083854062A42041E30"),warm=-1,n=0
+if h>=6&&h<9 warm=self.P[25] n=(9-h)*8 elif h>=15&&h<18 warm=self.P[26] n=(h-14)*7 end
+var y=0 while y<8 var col=base.get(y*3,-3) if warm>=0&&y<5 col=self.mix(col,warm,n*(5-y)/5) end self.W[y]=col y+=1 end
+# Shaft colour per row: the light fades into each row's water with depth.
+y=0 while y<4 self.H[y]=self.mix(self.W[y],y<2?self.P[0]:self.P[1],(y==0)?62:((y==1)?48:((y==2)?40:26))) y+=1 end
+end
+# The seabed as line runs, rebuilt only when it scrolls (every five seconds).
+def build_bed(bg)
+var P=self.P,FL=self.fl,B=[]
+B.push(0) B.push(31) B.push(7) B.push(P[2])
+var x=0 while x<32 if ((x+bg)&3)==1 B.push(x) B.push(x) B.push(7) B.push(P[3]) end x+=1 end
+var lvl=1
+while lvl<=2
+x=0
+while x<32
+if FL[(x+bg)%32]>=lvl var s=x while x<31&&FL[(x+1+bg)%32]>=lvl x+=1 end B.push(s) B.push(x) B.push(7-lvl) B.push(lvl==1?P[4]:P[5]) end
+x+=1
+end
+lvl+=1
+end
+self.bed=B
+end
+# Shaft runs (SL: first, last, row; SN = rows lit per column) and kelp pixels
+# (KL: x, y, colour, edge-faded here so draw() only replays them).
+def rebuild(tf)
+var T=self.T,P=self.P,SN=self.SN,U=tf*128.0/8500.0,V=tf*128.0/12000.0,x=0
+while x<32 var s=(T.getfloat((int(real(x)*20.48+U)&127)*4)+T.getfloat((int(real(x)*35.84-V)&127)*4))*0.5,n=0 if s>0.26 n=1+int((s-0.26)*5.4) if n>4 n=4 end end SN[x]=n x+=1 end
+var L=[],y=0
+while y<4 x=0 while x<32 if SN[x]>y var s0=x while x<31&&SN[x+1]>y x+=1 end L.push(s0) L.push(x) L.push(y) end x+=1 end y+=1 end
+self.SL=L
+var K=[],k=0
+while k<4
+var root=real((self.kx[k]+self.bg)%32)+self.tide*0.3,sway=T.getfloat((int(tf*128.0/2800.0+root*51.2)&127)*4)*0.45,cx=root,ky=7
+while ky>=4
+var px=int(cx+0.5),col=ky==4?P[7]:P[6]
+if px>=0&&px<32 if px<3||px>28 var f=(px<3)?real(px)/3.0:real(31-px)/3.0 col=self.mix(self.W[ky],col,int(f*100.0)) end if col!=self.W[ky] K.push(px) K.push(ky) K.push(col) end end
+cx+=sway ky-=1
+end
+k+=1
+end
+self.KL=K
+end
+def on_show()
+self.visible=true
+self.lastf=now_ms()
+self.lastt=self.scene_ms
+var h=hour() if h!=self.hr self.hr=h self.tint(h) end
+if self.bg<0 self.bg=int(real(self.scene_ms)/5000.0)%32 self.build_bed(self.bg) end
+end
+
+def on_hide()
+self.visible=false
+end
+
+def spawn(t)
+var s=self.lcg(),kind=0
+if t<self.shark_next kind=1+(s>>5)%5 if kind==self.last_kind kind=1+kind%5 end else self.shark_next=t+240000+(s>>3)%120000 end
+self.last_kind=kind self.vk=kind
+self.vd=((s>>7)&1)==1?1.0:-1.0
+self.vx=self.vd>0.0?-11.0:42.0
+self.vy=self.VY[kind] if kind==1||kind==2 self.vy+=real((s>>9)%3) end
+self.vs=self.VS[kind]
+end
+
+def loop()
+if !self.visible return end
+var t=self.scene_ms,dt=t-self.lastt self.lastt=t if dt<1 dt=1 end if dt>3000 dt=3000 end var k=real(dt)/1000.0 self.tide=self.sn(real(t)/45000.0)*0.8
+var h=hour() if h!=self.hr self.hr=h self.tint(h) end
+var bg=int(real(t)/5000.0)%32 if bg!=self.bg self.bg=bg self.build_bed(bg) end
+if self.vk<0
+if t>=self.vnext self.spawn(t) end
+elif (self.vd>0.0&&self.vx>43.0)||(self.vd<0.0&&self.vx<-12.0)
+self.vk=-1 self.lcg() self.vnext=t+6000+(self.seed>>4)%8000
+end
+self.ly=3.4+self.sn(real(t)/12000.0)*1.0+self.tide*0.3 if self.lx>39.0 self.ldir=-1.0 end if self.lx<-7.0 self.ldir=1.0 end
+if self.vk==0 var dx=self.lx-self.vx if dx<0.0 dx=-dx end var dy=(self.ly-(self.vy+1.5))*3.0 if dy<0.0 dy=-dy end var dist=self.sq(dx*dx+dy*dy) if dist<12.0 var tg=(12.0-dist)/12.0*100.0 if tg>self.scat self.scat=tg end end end
+self.scat=self.scat-self.scat*k/2.2 if self.scat<0.5 self.scat=0.0 end
+var spread=1.0+self.scat/22.0,i=0
+while i<4
+var ax=self.ox[i]*spread,ay=self.oy[i]*spread
+if self.scat>4.0 ax+=self.sn(real(t)/1800.0+real(i)*0.27)*(self.scat/55.0) ay+=self.sn(real(t)/1500.0+real(i)*0.33)*(self.scat/60.0) if self.vk==0 ay+=(self.fy[i]>=self.vy+1.5?1.0:-1.0)*(self.scat/30.0) end end
+self.tx[i]=self.lx+(self.ldir>0.0?ax:-ax)+self.tide self.ty[i]=self.ly+ay i+=1
+end
+end
+def draw()
+if !self.visible return end
+var wall=now_ms(),fd=wall-self.lastf self.lastf=wall if fd<1 fd=1 end if fd>200 fd=200 end
+self.scene_ms+=fd
+var P=self.P,W=self.W,T=self.T,t=self.scene_ms,tf=real(t),fk=real(fd)/1000.0
+if self.vk>=0 self.vx+=self.vd*self.vs*fk end
+self.lx+=self.ldir*1.5*fk var fg=(1.8+self.scat/70.0)*fk if fg>0.5 fg=0.5 end var q=0 while q<4 self.fx[q]+=(self.tx[q]-self.fx[q])*fg self.fy[q]+=(self.ty[q]-self.fy[q])*fg q+=1 end
+var y=0 while y<7 line(0,y,31,y,W[y]) y+=1 end
+# Shafts and kelp move slowly, so every fourth frame (~100 ms) rebuilds them
+# as draw lists; the frames between only replay those lists.
+self.sp=(self.sp+1)%4 if self.sp==0 self.rebuild(tf) end
+var A=self.SL,i=0,nb=A.size() while i<nb line(A[i],A[i+2],A[i+1],A[i+2],self.H[A[i+2]]) i+=3 end
+var B=self.bed nb=B.size() i=0 while i<nb line(B[i],B[i+2],B[i+1],B[i+2],B[i+3]) i+=4 end
+var K=self.KL nb=K.size() i=0 while i<nb pixel(K[i],K[i+1],K[i+2]) i+=3 end
+var bg=self.bg
+var s=0 while s<5 var sx=int((s*13+2+bg+self.tide*2.0)%32.0) if sx<0 sx+=32 end pixel(sx,int((tf/7500.0+real(s)*1.6)%7.0),P[12]) s+=1 end
+if self.vk>=0 self.draw_visitor(t,tf) end
+var f=0 while f<4 var cx=int(self.fx[f]+0.5),cy=int(self.fy[f]+0.5) if cy<1 cy=1 end if cy>6 cy=6 end self.fade_pixel(cx,cy,f==0?P[9]:P[10]) self.fade_pixel(self.ldir>0.0?cx-1:cx+1,cy,P[11]) f+=1 end
+var b=0 while b<3 var per=4800.0+real(b)*1500.0,ph=real(int(t+b*1700)%int(per))/per,by=7.0-ph*8.2,bxi=int(real((b*11+5)%32)+T.getfloat((int(tf*128.0/2400.0+real(b)*217.6)&127)*4)*1.2+self.tide*0.5) if bxi>=0&&bxi<32&&by>-0.5&&by<8.0 pixel(bxi,int(by),P[8]) end b+=1 end
+end
+
+# One visitor at a time. Shark: runs of its two swish masks. Manta: broad
+# wings that rise and fall. Turtle: shell and paddling flipper. Angelfish:
+# three bobbing in a column. Jellyfish: two bells pulsing upward. Crab: a
+# sidestep along the sand with one claw raised.
+def draw_visitor(t,tf)
+var P=self.P,T=self.T,k=self.vk,vx=self.vx,d=self.vd>0.0
+if k==0
+var bx=int(vx),by=int(self.vy+T.getfloat((int(tf*128.0/2200.0+vx*14.222)&127)*4)*0.5),R=(t%1400)<700?self.R1:self.R2,i=0,n=R.size()
+while i<n var r=R[i] self.hl(d?bx+R[i+1]:bx+10-R[i+2],d?bx+R[i+2]:bx+10-R[i+1],by+r,r==0?P[16]:P[15]) i+=3 end
+elif k==1
+var mx=int(vx),my=int(self.vy+0.5),ph=int(t/400)%6,wing=(ph==0||ph==5)?-1:((ph==2||ph==3)?1:0)
+self.hl(mx-2,mx+2,my,P[13]) self.fade_pixel(mx-3,my+wing,P[14]) self.fade_pixel(mx+3,my+wing,P[14])
+self.fade_pixel(mx,my-1,P[13]) self.fade_pixel(mx,my+1,P[13]) self.fade_pixel(mx,my,P[14]) self.fade_pixel(d?mx-4:mx+4,my+1,P[13])
+elif k==2
+var tx=int(vx),ty=int(self.vy),flap=T.getfloat((int(tf*128.0/1200.0)&127)*4)>0.0?1:0
+self.hl(tx,tx+3,ty+1,P[23]) self.hl(tx+1,tx+2,ty,P[24])
+self.fade_pixel(d?tx+4:tx-1,ty,P[24]) self.fade_pixel(d?tx+2:tx+1,ty+1+flap,P[24])
+elif k==3
+var ax=int(vx),ay=self.vy+T.getfloat((int(tf*128.0/1800.0)&127)*4)*0.4,a=0
+while a<3 var cx=ax+a*4*(d?-1:1),cy=int(ay+((a==1)?-1.0:((a==2)?1.0:0.0))) if cy>=1&&cy<7 self.fade_pixel(cx-1,cy,P[17]) self.fade_pixel(cx,cy,P[17]) self.fade_pixel(cx+1,cy,P[17]) self.fade_pixel(cx,cy-1,P[18]) end a+=1 end
+elif k==4
+var j=0
+while j<2 var jx=int(vx)+j*5*(d?-1:1),jy=int(self.vy-real(j)+T.getfloat((int(tf*128.0/1600.0+real(j)*40.0)&127)*4)*0.8),pulse=((t/400+j)%2)==0
+self.fade_pixel(jx,jy,P[19]) self.fade_pixel(jx+1,jy,P[19]) self.fade_pixel(pulse?jx:jx+1,jy+1,P[20]) j+=1 end
+else
+var cx=int(vx),claw=((t/500)%2)==0
+self.fade_pixel(cx,7,P[21]) self.fade_pixel(cx+1,7,P[21]) self.fade_pixel(d?cx+2:cx-1,claw?6:7,P[22])
+end
+end
+end
+# This file creates one page per load. Release the constructor's constants after
+# its buffers are initialized; reload/reboot defines a fresh class and constructor.
+var _ocean_page=Ocean()
+Ocean.init=nil
+return _ocean_page
