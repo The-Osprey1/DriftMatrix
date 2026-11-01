@@ -36,24 +36,29 @@ script.
   | --- | --- | --- | --- | --- |
   | `moon` | `weather/moon-panel-v2.6.ax` | 11,845 (sha256 `1a78e8d1…`) | 2.6 | 20,378 |
   | `nightkeeper` | `nightkeeper.ax` | 2,685 | 3.0 | 4,081 |
-  | `nowplaying` | `now_playing-v2.4.ax` + PC LAN URL | ~9,500 | 2.4 | 13,643 |
+  | `nowplaying` | `now_playing-v2.5.1.ax` + PC LAN URL | 9,900 | 2.5.1 | 14,652 |
   | `ocean` | `ocean-v3.4.2.ax` | 9,694 (sha256 `e05ed8a4…`) | 3.4.2 | 19,622 |
 
-  Ocean 3.4.2 and Moon 2.6 were installed with `script_swap.py` on
+  Ocean 3.4.2, Moon 2.6 and Now Playing 2.5.1 were installed with `script_swap.py` on
   2026-10-31 and read back byte-exact. Rollback sources stay in the repo:
-  Ocean 3.3 / 3.4 / 3.4.1, Moon 2.4 / 2.5 / 2.5.1. A guarded swap drops the target
+  Ocean 3.3 / 3.4 / 3.4.1, Moon 2.4 / 2.5 / 2.5.1, Now Playing 2.4. The
+  media worker refuses to start unless the installed script equals its
+  `script_path` template rendered with the PC's LAN URL; that path is now
+  `%LOCALAPPDATA%/AWTRIX/scripts/now_playing-v2.5.1.ax` (2.4's was a backup
+  copy). `script_swap.py` takes a rendered file for `nowplaying`
+  (`now_playing_bridge.install_source`). A guarded swap drops the target
   from `/apploop.json`; run `rotation_policy.py --apply` afterwards.
   `sunset` has been off since 2026-10-04. Live weather is the *pushed*
   `weatherbrief`, `wxnext`, `wxalert` and `aqibrief`. Pushed apps live in
   RAM and vanish on reboot; their senders re-push within minutes. Always
   check `GET /apps`.
-- **Budget: 72,492 of 98,304 B (73.7%) after boot** (2026-10-31). That is
-  the boot log's `shared` total: the four scripts' 57,724 B plus ~14,800 B
+- **Budget: 73,501 of 98,304 B (74.8%) after boot** (2026-10-31). That is
+  the boot log's `shared` total: the four scripts' 58,733 B plus ~14,800 B
   the VM holds before any script loads. Compare `shared` with the budget, not
   the per-script sum. 75% (73,728 B) is the ceiling `script_swap.py`
   enforces after every install — it rolls back an install that crosses it,
-  and did so for a timing build 212 B over. With 1,236 B to spare, anything
-  added needs something removed. The panel panicked on 2026-10-04 at 14:51
+  and did so for a timing build 212 B over and for Now Playing 2.5 112 B
+  over. With 227 B to spare, anything added needs something removed. The panel panicked on 2026-10-04 at 14:51
   with five scripts at 85%; the root cause is not established.
 - **Cost is not proportional to source.** VM heap has run from 0.4× to
   2.5× the source size, because tables built in `init()` dominate. Only a
@@ -191,8 +196,9 @@ These facts were verified in the firmware source *and* on the panel:
   `log()`s it every 200 frames; it must fit the 75% ceiling.
 - Only horizontal `line()` is relied on; no script uses another kind.
 - **Measured 2026-10-31:** Ocean 3.4.2 40–42 FPS (3.3: 28, minimum 18);
-  Moon 2.6 40–42 (2.4: 35–42); `nowplaying` ran ~36 earlier and has not
-  been profiled — a timing build of it would not fit the ceiling today.
+  Moon 2.6 40–42 (2.4: 35–42); Now Playing 2.5.1 37–41 (2.4: 30–34, its
+  scrolling title 13.4 ms of a 17 ms draw; 2.5 rebuilds the title's runs
+  once per scroll step).
 - **Nebula brightness.** At brightness 45 a channel below 23 does not light an
   LED; 2.4's nebula (4–40% of a deep blue) never did. Moon 2.6 uses three
   levels at 1×, 1.45× and 1.9× the time-of-day base (LED levels ~3, 6 and 11;
@@ -441,8 +447,10 @@ Python via Windows Security → Ransomware protection → Allow an app.
   pre-reboot scripts. See `STABILITY_STATUS.md` for evidence and limits.
 - **Overhaul 2026-10-31** (requested by the user): observed weather, outlook and
   alert pages, notification mirror on, readable labels, Ocean 3.4.2, Moon
-  2.5.1. Next Up stays off (no calendar feed); the mirror shows nothing until
-  Windows notifications are turned back on (`ToastEnabled = 0`).
+  2.6, Now Playing Next Up stays off (no calendar feed). Windows notifications are on again.
+- **Wi-Fi is the weak link:** the panel sits at −77 to −90 dBm and fell into
+  AP (setup) mode once during a reboot on 2026-10-31; a power cycle brought it
+  back. Keep reboot-heavy work short; never type into the setup portal.
 - Git metadata lives under `%LOCALAPPDATA%\AWTRIX\git\awtrix.git`; use
   `awtrix-git.ps1`. `git commit` through it works from an ordinary shell:
   only the git directory under `%LOCALAPPDATA%` is written.
