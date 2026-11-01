@@ -34,25 +34,25 @@ script.
 
   | Script | Repo source | Minified bytes | `meta.version` | VM heap at boot |
   | --- | --- | --- | --- | --- |
-  | `moon` | `weather/moon-panel-v2.5.1.ax` | 11,940 (sha256 `8f062d92…`) | 2.5.1 | 21,062 |
+  | `moon` | `weather/moon-panel-v2.6.ax` | 11,845 (sha256 `1a78e8d1…`) | 2.6 | 20,378 |
   | `nightkeeper` | `nightkeeper.ax` | 2,685 | 3.0 | 4,081 |
   | `nowplaying` | `now_playing-v2.4.ax` + PC LAN URL | ~9,500 | 2.4 | 13,643 |
   | `ocean` | `ocean-v3.4.2.ax` | 9,694 (sha256 `e05ed8a4…`) | 3.4.2 | 19,622 |
 
-  Ocean 3.4.2 and Moon 2.5.1 were installed with `script_swap.py` on
+  Ocean 3.4.2 and Moon 2.6 were installed with `script_swap.py` on
   2026-10-31 and read back byte-exact. Rollback sources stay in the repo:
-  Ocean 3.3 / 3.4 / 3.4.1, Moon 2.4 / 2.5. A guarded swap drops the target
+  Ocean 3.3 / 3.4 / 3.4.1, Moon 2.4 / 2.5 / 2.5.1. A guarded swap drops the target
   from `/apploop.json`; run `rotation_policy.py --apply` afterwards.
   `sunset` has been off since 2026-10-04. Live weather is the *pushed*
   `weatherbrief`, `wxnext`, `wxalert` and `aqibrief`. Pushed apps live in
   RAM and vanish on reboot; their senders re-push within minutes. Always
   check `GET /apps`.
-- **Budget: 73,176 of 98,304 B (74.4%) after boot** (2026-10-31). That is
-  the boot log's `shared` total: the four scripts' 58,408 B plus ~14,800 B
+- **Budget: 72,492 of 98,304 B (73.7%) after boot** (2026-10-31). That is
+  the boot log's `shared` total: the four scripts' 57,724 B plus ~14,800 B
   the VM holds before any script loads. Compare `shared` with the budget, not
   the per-script sum. 75% (73,728 B) is the ceiling `script_swap.py`
   enforces after every install — it rolls back an install that crosses it,
-  and did so for a timing build 212 B over. With 552 B to spare, anything
+  and did so for a timing build 212 B over. With 1,236 B to spare, anything
   added needs something removed. The panel panicked on 2026-10-04 at 14:51
   with five scripts at 85%; the root cause is not established.
 - **Cost is not proportional to source.** VM heap has run from 0.4× to
@@ -191,12 +191,13 @@ These facts were verified in the firmware source *and* on the panel:
   `log()`s it every 200 frames; it must fit the 75% ceiling.
 - Only horizontal `line()` is relied on; no script uses another kind.
 - **Measured 2026-10-31:** Ocean 3.4.2 40–42 FPS (3.3: 28, minimum 18);
-  Moon 2.5.1 39–42 (2.4: 35–42); `nowplaying` ran ~36 earlier and has not
+  Moon 2.6 40–42 (2.4: 35–42); `nowplaying` ran ~36 earlier and has not
   been profiled — a timing build of it would not fit the ceiling today.
-- Moon 2.5 skips nebula runs no channel of which reaches `VISIBLE_MIN` (20):
-  at brightness 45 a channel below 23 does not light an LED, and ~39 of ~41
-  runs never did. Raising the day brightness well above 45 is the case to
-  revisit.
+- **Nebula brightness.** At brightness 45 a channel below 23 does not light an
+  LED; 2.4's nebula (4–40% of a deep blue) never did. Moon 2.6 uses three
+  levels at 1×, 1.45× and 1.9× the time-of-day base (LED levels ~3, 6 and 11;
+  moon and stars ~41), about 16 runs a frame, and caches star colours (a third
+  recomputed per frame) to pay for them.
 
 ## REST API (all under `http://192.168.1.90/api/v1`)
 
