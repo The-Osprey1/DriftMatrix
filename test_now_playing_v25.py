@@ -15,6 +15,8 @@ from weather import moon_panel_sim
 ROOT = Path(__file__).resolve().parent
 V24 = (ROOT / 'now_playing-v2.4.ax').read_text(encoding='utf-8')
 V25 = (ROOT / 'now_playing-v2.5.ax').read_text(encoding='utf-8')
+V251 = (ROOT / 'now_playing-v2.5.1.ax').read_text(encoding='utf-8')
+CANDIDATES = {'2.5': V25, '2.5.1': V251}
 
 LONG = 'MIDNIGHT CITY - M83 - HURRY UP, WE\'RE DREAMING (DELUXE)'
 SHORT = 'M83'
@@ -43,13 +45,14 @@ SCRIPTS = {
 }
 
 
+@pytest.mark.parametrize('version', sorted(CANDIDATES))
 @pytest.mark.parametrize('name', sorted(SCRIPTS))
-def test_frames_are_identical_to_2_4(name):
-    assert run(V25, SCRIPTS[name]) == run(V24, SCRIPTS[name])
+def test_frames_are_identical_to_2_4(name, version):
+    assert run(CANDIDATES[version], SCRIPTS[name]) == run(V24, SCRIPTS[name])
 
 
-def test_header():
-    assert '# @version 2.5' in V25
+def test_headers():
+    assert '# @version 2.5' in V25.splitlines() and '# @version 2.5.1' in V251.splitlines()
 
 
 def test_a_scrolling_title_makes_fewer_calls(monkeypatch):
@@ -74,7 +77,7 @@ def test_a_scrolling_title_makes_fewer_calls(monkeypatch):
     monkeypatch.setattr(moon_panel_sim.Screen, 'pixel', counted_pixel)
     monkeypatch.setattr(moon_panel_sim.Screen, 'line', counted_line)
     means = []
-    for source in (V24, V25):
+    for source in (V24, V251):
         preview = review.MediaPreview(source)
         preview.receive(LONG, 50)
         preview.page.on_show()
@@ -87,11 +90,12 @@ def test_a_scrolling_title_makes_fewer_calls(monkeypatch):
     assert means[1] < means[0] - 5
 
 
-def test_the_run_buffer_never_overflows():
-    preview = review.MediaPreview(V25)
+@pytest.mark.parametrize('version', sorted(CANDIDATES))
+def test_the_run_buffer_never_overflows(version):
+    preview = review.MediaPreview(CANDIDATES[version])
     for title in (LONG, SHORT, 'W' * 40, 'MWMWMWMWMWMWMWMW', '#' * 30, '1111111111111111111111111'):
         preview.receive(title, 50)
         preview.page.on_show()
         for k in range(len(title) * 4 + 8):
             preview.page.build_title(k)
-            assert preview.page.tn <= 240
+            assert preview.page.tn <= len(preview.page.TR)
